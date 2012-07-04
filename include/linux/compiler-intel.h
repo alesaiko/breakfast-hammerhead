@@ -24,11 +24,12 @@
      __ptr = (unsigned long) (ptr);				\
     (typeof(ptr)) (__ptr + (off)); })
 
-/* This should act as an optimization barrier on var.
+/*
+ * This should act as an optimization barrier on var.
  * Given that this compiler does not have inline assembly, a compiler barrier
  * is the best we can do.
  */
-#define OPTIMIZER_HIDE_VAR(var) barrier()
+#define OPTIMIZER_HIDE_VAR(var)	barrier()
 
 /* Intel ECC compiler doesn't support __builtin_types_compatible_p() */
 #define __must_be_array(a) 0
