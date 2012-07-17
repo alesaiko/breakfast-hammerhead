@@ -309,11 +309,9 @@ static ssize_t store_dynamic_sync_delay(struct kobject *kobj,
 	dyn_sync.delay = val;
 
 	/* Restart the work with a new delay if it was in progress */
-	if (delayed_work_pending(&force_sync_work)) {
-		cancel_delayed_work_sync(&force_sync_work);
-		queue_delayed_work(dfs_wq, &force_sync_work,
-				   msecs_to_jiffies(dyn_sync.delay));
-	}
+	if (delayed_work_pending(&force_sync_work))
+		mod_delayed_work(dfs_wq, &force_sync_work,
+				 msecs_to_jiffies(dyn_sync.delay));
 
 	return count;
 }

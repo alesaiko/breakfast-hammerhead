@@ -452,7 +452,7 @@ static int mdss_mdp_cmd_wait4pingpong(struct mdss_mdp_ctl *ctl, void *arg)
 	}
 
 	if (flush_wq)
-		flush_work_sync(&ctx->pp_done_work);
+		flush_work(&ctx->pp_done_work);
 
 	return rc;
 }
@@ -533,7 +533,7 @@ int mdss_mdp_cmd_stop(struct mdss_mdp_ctl *ctl)
 
 	mdss_mdp_cmd_clk_off(ctx);
 
-	flush_work_sync(&ctx->pp_done_work);
+	flush_work(&ctx->pp_done_work);
 
 	ctx->panel_on = 0;
 
