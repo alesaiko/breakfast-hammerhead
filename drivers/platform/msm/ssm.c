@@ -756,7 +756,7 @@ static int __devexit ssm_remove(struct platform_device *pdev)
 	 */
 	ssm_drv->ready = false;
 	smd_close(ssm_drv->ch);
-	flush_work_sync(&ssm_drv->ipc_work);
+	flush_work(&ssm_drv->ipc_work);
 
 	/* ION clean up*/
 	ion_unmap_kernel(ssm_drv->ssm_ion_client, ssm_drv->ssm_ion_handle);
