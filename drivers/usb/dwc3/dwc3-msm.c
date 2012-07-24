@@ -983,12 +983,12 @@ static void dwc3_restart_usb_work(struct work_struct *w)
 
 	/* Reset active USB connection */
 	mdwc->ext_xceiv.bsv = false;
-	queue_delayed_work(system_nrt_wq, &mdwc->resume_work, 0);
+	schedule_delayed_work(&mdwc->resume_work, 0);
 	/* Make sure disconnect is processed before sending connect */
 	flush_delayed_work(&mdwc->resume_work);
 
 	mdwc->ext_xceiv.bsv = true;
-	queue_delayed_work(system_nrt_wq, &mdwc->resume_work, 0);
+	schedule_delayed_work(&mdwc->resume_work, 0);
 }
 
 /**
@@ -1002,7 +1002,7 @@ void msm_dwc3_restart_usb_session(void)
 	struct dwc3_msm *mdwc = context;
 
 	dev_dbg(mdwc->dev, "%s\n", __func__);
-	queue_work(system_nrt_wq, &mdwc->restart_usb_work);
+	schedule_work(&mdwc->restart_usb_work);
 
 	return;
 }
@@ -1605,7 +1605,7 @@ static void dwc3_chg_detect_work(struct work_struct *w)
 		return;
 	}
 
-	queue_delayed_work(system_nrt_wq, &mdwc->chg_work, delay);
+	schedule_delayed_work(&mdwc->chg_work, delay);
 }
 
 static void dwc3_start_chg_det(struct dwc3_charger *charger, bool start)
@@ -1622,7 +1622,7 @@ static void dwc3_start_chg_det(struct dwc3_charger *charger, bool start)
 
 	mdwc->chg_state = USB_CHG_STATE_UNDEFINED;
 	charger->chg_type = DWC3_INVALID_CHARGER;
-	queue_delayed_work(system_nrt_wq, &mdwc->chg_work, 0);
+	schedule_delayed_work(&mdwc->chg_work, 0);
 }
 
 static int dwc3_msm_suspend(struct dwc3_msm *mdwc)
@@ -2001,7 +2001,7 @@ static irqreturn_t msm_dwc3_irq(int irq, void *data)
 
 	if (atomic_read(&mdwc->in_lpm)) {
 		dev_dbg(mdwc->dev, "%s received in LPM\n", __func__);
-		queue_delayed_work(system_nrt_wq, &mdwc->resume_work, 0);
+		schedule_delayed_work(&mdwc->resume_work, 0);
 	} else {
 		/* With current implementation should never end up here */
 		pr_info_ratelimited("%s: IRQ outside LPM\n", __func__);
@@ -2056,8 +2056,7 @@ static int dwc3_msm_power_set_property_usb(struct power_supply *psy,
 		if (mdwc->otg_xceiv && !mdwc->ext_inuse &&
 		    (mdwc->ext_xceiv.otg_capability || !init)) {
 			mdwc->ext_xceiv.bsv = val->intval;
-			queue_delayed_work(system_nrt_wq,
-							&mdwc->resume_work, 20);
+			schedule_delayed_work(&mdwc->resume_work, 20);
 
 			if (!init)
 				init = true;
@@ -2164,7 +2163,7 @@ static void dwc3_ext_notify_online(void *ctx, int on)
 		power_supply_set_present(mdwc->ext_vbus_psy, on);
 
 	if (notify_otg)
-		queue_delayed_work(system_nrt_wq, &mdwc->resume_work, 0);
+		schedule_delayed_work(&mdwc->resume_work, 0);
 }
 
 static void dwc3_id_work(struct work_struct *w)
@@ -2209,7 +2208,7 @@ static irqreturn_t dwc3_pmic_id_irq(int irq, void *data)
 	id = !!irq_read_line(irq);
 	if (mdwc->id_state != id) {
 		mdwc->id_state = id;
-		queue_work(system_nrt_wq, &mdwc->id_work);
+		schedule_work(&mdwc->id_work);
 	}
 
 	return IRQ_HANDLED;
@@ -2250,7 +2249,7 @@ static void dwc3_init_adc_work(struct work_struct *w)
 
 	ret = qpnp_adc_tm_is_ready();
 	if (ret == -EPROBE_DEFER) {
-		queue_delayed_work(system_nrt_wq, to_delayed_work(w),
+		schedule_delayed_work(to_delayed_work(w),
 					msecs_to_jiffies(100));
 		return;
 	}
@@ -2528,8 +2527,7 @@ static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 				msm->id_state =
 					!!irq_read_line(msm->pmic_id_irq);
 				if (msm->id_state == DWC3_ID_GROUND)
-					queue_work(system_nrt_wq,
-							&msm->id_work);
+					schedule_work(&msm->id_work);
 				local_irq_restore(flags);
 				enable_irq_wake(msm->pmic_id_irq);
 			}
@@ -2537,7 +2535,7 @@ static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 
 		if (msm->pmic_id_irq <= 0) {
 			/* If no PMIC ID IRQ, use ADC for ID pin detection */
-			queue_work(system_nrt_wq, &msm->init_adc_work.work);
+			schedule_work(&msm->init_adc_work.work);
 			device_create_file(&pdev->dev, &dev_attr_adc_enable);
 			msm->pmic_id_irq = 0;
 		}
@@ -2806,7 +2804,7 @@ static int dwc3_msm_pm_suspend(struct device *dev)
 
 	dev_dbg(dev, "dwc3-msm PM suspend\n");
 
-	flush_delayed_work_sync(&mdwc->resume_work);
+	flush_delayed_work(&mdwc->resume_work);
 	if (!atomic_read(&mdwc->in_lpm)) {
 		dev_err(mdwc->dev, "Abort PM suspend!! (USB is outside LPM)\n");
 		return -EBUSY;

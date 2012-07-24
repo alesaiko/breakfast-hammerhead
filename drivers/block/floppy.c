@@ -4321,7 +4321,7 @@ static int __init floppy_init(void)
 out_unreg_platform_dev:
 	platform_device_unregister(&floppy_device[drive]);
 out_flush_work:
-	flush_work_sync(&floppy_work);
+	flush_work(&floppy_work);
 	if (atomic_read(&usage_count))
 		floppy_release_irq_and_dma();
 out_unreg_region:
@@ -4397,7 +4397,7 @@ static int floppy_grab_irq_and_dma(void)
 	 * We might have scheduled a free_irq(), wait it to
 	 * drain first:
 	 */
-	flush_work_sync(&floppy_work);
+	flush_work(&floppy_work);
 
 	if (fd_request_irq()) {
 		DPRINT("Unable to grab IRQ%d for the floppy driver\n",
