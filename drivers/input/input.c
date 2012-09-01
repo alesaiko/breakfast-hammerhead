@@ -46,6 +46,7 @@ static LIST_HEAD(input_handler_list);
 static DEFINE_MUTEX(input_mutex);
 
 static struct input_handler *input_table[8];
+static const struct input_value input_value_sync = { EV_SYN, SYN_REPORT, 1 };
 
 static inline int is_event_supported(unsigned int code,
 				     unsigned long *bm, unsigned int max)
@@ -69,42 +70,97 @@ static int input_defuzz_abs_event(int value, int old_val, int fuzz)
 	return value;
 }
 
+static inline void input_start_autorepeat(struct input_dev *dev, int code)
+{
+	if (test_bit(EV_REP, dev->evbit) && dev->rep[REP_PERIOD] &&
+	    dev->rep[REP_DELAY] && dev->timer.data) {
+		dev->repeat_key = code;
+		mod_timer(&dev->timer,
+			  jiffies + msecs_to_jiffies(dev->rep[REP_DELAY]));
+	}
+}
+
+static inline void input_stop_autorepeat(struct input_dev *dev)
+{
+	del_timer(&dev->timer);
+}
+
 /*
  * Pass event first through all filters and then, if event has not been
  * filtered out, through all open handles. This function is called with
  * dev->event_lock held and interrupts disabled.
  */
-static void input_pass_event(struct input_dev *dev,
-			     unsigned int type, unsigned int code, int value)
+static unsigned int input_to_handler(struct input_handle *handle,
+				     struct input_value *vals,
+				     unsigned int count)
 {
-	struct input_handler *handler;
-	struct input_handle *handle;
+	struct input_handler *handler = handle->handler;
+	struct input_value *end = vals, *v;
 
-	rcu_read_lock();
+	for (v = vals; v != vals + count; v++) {
+		if (handler->filter &&
+		    handler->filter(handle, v->type, v->code, v->value))
+			continue;
 
-	handle = rcu_dereference(dev->grab);
-	if (handle)
-		handle->handler->event(handle, type, code, value);
-	else {
-		bool filtered = false;
-
-		list_for_each_entry_rcu(handle, &dev->h_list, d_node) {
-			if (!handle->open)
-				continue;
-
-			handler = handle->handler;
-			if (!handler->filter) {
-				if (filtered)
-					break;
-
-				handler->event(handle, type, code, value);
-
-			} else if (handler->filter(handle, type, code, value))
-				filtered = true;
-		}
+		if (end != v)
+			*end = *v;
+		end++;
 	}
 
+	count = end - vals;
+	if (!count)
+		return 0;
+
+	if (handler->events)
+		handler->events(handle, vals, count);
+	else if (handler->event)
+		for (v = vals; v != end; v++)
+			handler->event(handle, v->type, v->code, v->value);
+
+	return count;
+}
+
+/*
+ * Pass values first through all filters and then, if event has not been
+ * filtered out, through all open handles. This function is called with
+ * dev->event_lock held and interrupts disabled.
+ */
+static void input_pass_values(struct input_dev *dev,
+			      struct input_value *vals,
+			      unsigned int count)
+{
+	struct input_handle *handle;
+	struct input_value *v;
+
+	if (!count)
+		return;
+
+	rcu_read_lock();
+	handle = rcu_dereference(dev->grab);
+	if (handle) {
+		count = input_to_handler(handle, vals, count);
+	} else {
+		list_for_each_entry_rcu(handle, &dev->h_list, d_node)
+			if (handle->open)
+				count = input_to_handler(handle, vals, count);
+	}
 	rcu_read_unlock();
+
+	add_input_randomness(vals->type, vals->code, vals->value);
+
+	/* Trigger auto repeat for key events */
+	for (v = vals; v != vals + count; v++)
+		if (v->type == EV_KEY && v->value != 2)
+			v->value ? input_start_autorepeat(dev, v->code) :
+				   input_stop_autorepeat(dev);
+}
+
+static void input_pass_event(struct input_dev *dev,
+			     u32 type, u32 code, int value)
+{
+	struct input_value vals[] = { { type, code, value } };
+
+	input_pass_values(dev, vals, ARRAY_SIZE(vals));
 }
 
 /*
@@ -121,19 +177,12 @@ static void input_repeat_key(unsigned long data)
 
 	if (test_bit(dev->repeat_key, dev->key) &&
 	    is_event_supported(dev->repeat_key, dev->keybit, KEY_MAX)) {
+		struct input_value vals[] = {
+			{ EV_KEY, dev->repeat_key, 2 },
+			input_value_sync,
+		};
 
-		input_pass_event(dev, EV_KEY, dev->repeat_key, 2);
-
-		if (dev->sync) {
-			/*
-			 * Only send SYN_REPORT if we are not in a middle
-			 * of driver parsing a new hardware packet.
-			 * Otherwise assume that the driver will send
-			 * SYN_REPORT once it's done.
-			 */
-			input_pass_event(dev, EV_SYN, SYN_REPORT, 1);
-		}
-
+		input_pass_values(dev, vals, ARRAY_SIZE(vals));
 		if (dev->rep[REP_PERIOD])
 			mod_timer(&dev->timer, jiffies +
 					msecs_to_jiffies(dev->rep[REP_PERIOD]));
@@ -142,25 +191,11 @@ static void input_repeat_key(unsigned long data)
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 }
 
-static void input_start_autorepeat(struct input_dev *dev, int code)
-{
-	if (test_bit(EV_REP, dev->evbit) &&
-	    dev->rep[REP_PERIOD] && dev->rep[REP_DELAY] &&
-	    dev->timer.data) {
-		dev->repeat_key = code;
-		mod_timer(&dev->timer,
-			  jiffies + msecs_to_jiffies(dev->rep[REP_DELAY]));
-	}
-}
-
-static void input_stop_autorepeat(struct input_dev *dev)
-{
-	del_timer(&dev->timer);
-}
-
 #define INPUT_IGNORE_EVENT	0
 #define INPUT_PASS_TO_HANDLERS	1
 #define INPUT_PASS_TO_DEVICE	2
+#define INPUT_SLOT		4
+#define INPUT_FLUSH		8
 #define INPUT_PASS_TO_ALL	(INPUT_PASS_TO_HANDLERS | INPUT_PASS_TO_DEVICE)
 
 static int input_handle_abs_event(struct input_dev *dev,
@@ -207,14 +242,14 @@ static int input_handle_abs_event(struct input_dev *dev,
 	/* Flush pending "slot" event */
 	if (is_mt_event && dev->slot != input_abs_get_val(dev, ABS_MT_SLOT)) {
 		input_abs_set_val(dev, ABS_MT_SLOT, dev->slot);
-		input_pass_event(dev, EV_ABS, ABS_MT_SLOT, dev->slot);
+		return INPUT_PASS_TO_HANDLERS | INPUT_SLOT;
 	}
 
 	return INPUT_PASS_TO_HANDLERS;
 }
 
-static void input_handle_event(struct input_dev *dev,
-			       unsigned int type, unsigned int code, int value)
+static int input_get_disposition(struct input_dev *dev,
+				 u32 type, u32 code, int value)
 {
 	int disposition = INPUT_IGNORE_EVENT;
 
@@ -229,37 +264,30 @@ static void input_handle_event(struct input_dev *dev,
 			break;
 
 		case SYN_REPORT:
-			if (!dev->sync) {
-				dev->sync = true;
-				disposition = INPUT_PASS_TO_HANDLERS;
-			}
+			disposition = INPUT_PASS_TO_HANDLERS | INPUT_FLUSH;
 			break;
 		case SYN_MT_REPORT:
-			dev->sync = false;
 			disposition = INPUT_PASS_TO_HANDLERS;
 			break;
 		}
 		break;
 
 	case EV_KEY:
-		if (is_event_supported(code, dev->keybit, KEY_MAX) &&
-		    !!test_bit(code, dev->key) != value) {
+		if (is_event_supported(code, dev->keybit, KEY_MAX)) {
 
-			if (value != 2) {
+			/* Auto-repeat bypasses state updates */
+			if (value == 2) {
+				disposition = INPUT_PASS_TO_HANDLERS;
+			} else if (!!test_bit(code, dev->key) != !!value) {
 				__change_bit(code, dev->key);
-				if (value)
-					input_start_autorepeat(dev, code);
-				else
-					input_stop_autorepeat(dev);
+				disposition = INPUT_PASS_TO_HANDLERS;
 			}
-
-			disposition = INPUT_PASS_TO_HANDLERS;
 		}
 		break;
 
 	case EV_SW:
 		if (is_event_supported(code, dev->swbit, SW_MAX) &&
-		    !!test_bit(code, dev->sw) != value) {
+		    !!test_bit(code, dev->sw) != !!value) {
 
 			__change_bit(code, dev->sw);
 			disposition = INPUT_PASS_TO_HANDLERS;
@@ -286,7 +314,7 @@ static void input_handle_event(struct input_dev *dev,
 
 	case EV_LED:
 		if (is_event_supported(code, dev->ledbit, LED_MAX) &&
-		    !!test_bit(code, dev->led) != value) {
+		    !!test_bit(code, dev->led) != !!value) {
 
 			__change_bit(code, dev->led);
 			disposition = INPUT_PASS_TO_ALL;
@@ -319,14 +347,45 @@ static void input_handle_event(struct input_dev *dev,
 		break;
 	}
 
-	if (disposition != INPUT_IGNORE_EVENT && type != EV_SYN)
-		dev->sync = false;
+	return disposition;
+}
+
+static void input_handle_event(struct input_dev *dev,
+			       u32 type, u32 code, int value)
+{
+	int disposition = input_get_disposition(dev, type, code, value);
 
 	if ((disposition & INPUT_PASS_TO_DEVICE) && dev->event)
 		dev->event(dev, type, code, value);
 
-	if (disposition & INPUT_PASS_TO_HANDLERS)
-		input_pass_event(dev, type, code, value);
+	if (!dev->vals)
+		return;
+
+	if (disposition & INPUT_PASS_TO_HANDLERS) {
+		struct input_value *v;
+
+		if (disposition & INPUT_SLOT) {
+			v = &dev->vals[dev->num_vals++];
+			v->type = EV_ABS;
+			v->code = ABS_MT_SLOT;
+			v->value = dev->slot;
+		}
+
+		v = &dev->vals[dev->num_vals++];
+		v->type = type;
+		v->code = code;
+		v->value = value;
+	}
+
+	if (disposition & INPUT_FLUSH) {
+		if (dev->num_vals >= 2)
+			input_pass_values(dev, dev->vals, dev->num_vals);
+		dev->num_vals = 0;
+	} else if (dev->num_vals >= (dev->max_vals - 2)) {
+		dev->vals[dev->num_vals++] = input_value_sync;
+		input_pass_values(dev, dev->vals, dev->num_vals);
+		dev->num_vals = 0;
+	}
 }
 
 /**
@@ -354,7 +413,6 @@ void input_event(struct input_dev *dev,
 	if (is_event_supported(type, dev->evbit, EV_MAX)) {
 
 		spin_lock_irqsave(&dev->event_lock, flags);
-		add_input_randomness(type, code, value);
 		input_handle_event(dev, type, code, value);
 		spin_unlock_irqrestore(&dev->event_lock, flags);
 	}
@@ -881,10 +939,12 @@ int input_set_keycode(struct input_dev *dev,
 	if (test_bit(EV_KEY, dev->evbit) &&
 	    !is_event_supported(old_keycode, dev->keybit, KEY_MAX) &&
 	    __test_and_clear_bit(old_keycode, dev->key)) {
+		struct input_value vals[] = {
+			{ EV_KEY, old_keycode, 0 },
+			input_value_sync,
+		};
 
-		input_pass_event(dev, EV_KEY, old_keycode, 0);
-		if (dev->sync)
-			input_pass_event(dev, EV_SYN, SYN_REPORT, 1);
+		input_pass_values(dev, vals, ARRAY_SIZE(vals));
 	}
 
  out:
@@ -1500,6 +1560,7 @@ static void input_dev_release(struct device *device)
 	input_ff_destroy(dev);
 	input_mt_destroy_slots(dev);
 	kfree(dev->absinfo);
+	kfree(dev->vals);
 	kfree(dev);
 
 	module_put(THIS_MODULE);
@@ -1862,6 +1923,9 @@ static unsigned int input_estimate_events_per_packet(struct input_dev *dev)
 		if (test_bit(i, dev->relbit))
 			events++;
 
+	/* Make room for KEY and MSC events */
+	events += 7;
+
 	return events;
 }
 
@@ -1900,6 +1964,7 @@ int input_register_device(struct input_dev *dev)
 {
 	static atomic_t input_no = ATOMIC_INIT(0);
 	struct input_handler *handler;
+	unsigned int packet_size;
 	const char *path;
 	int error;
 
@@ -1912,9 +1977,14 @@ int input_register_device(struct input_dev *dev)
 	/* Make sure that bitmasks not mentioned in dev->evbit are clean. */
 	input_cleanse_bitmasks(dev);
 
-	if (!dev->hint_events_per_packet)
-		dev->hint_events_per_packet =
-				input_estimate_events_per_packet(dev);
+	packet_size = input_estimate_events_per_packet(dev);
+	if (dev->hint_events_per_packet < packet_size)
+		dev->hint_events_per_packet = packet_size;
+
+	dev->max_vals = max(dev->hint_events_per_packet, packet_size) + 2;
+	dev->vals = kcalloc(dev->max_vals, sizeof(*dev->vals), GFP_KERNEL);
+	if (IS_ERR_OR_NULL(dev->vals))
+		return -ENOMEM;
 
 	/*
 	 * If delay and period are pre-set by the driver, then autorepeating
