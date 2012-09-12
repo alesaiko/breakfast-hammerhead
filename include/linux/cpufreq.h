@@ -120,6 +120,9 @@ struct cpufreq_policy {
 #define CPUFREQ_NOTIFY		(2)
 #define CPUFREQ_START		(3)
 
+#define CPUFREQ_CREATE_POLICY	(5)
+#define CPUFREQ_REMOVE_POLICY	(6)
+
 #define CPUFREQ_SHARED_TYPE_NONE (0) /* None */
 #define CPUFREQ_SHARED_TYPE_HW	 (1) /* HW does needed coordination */
 #define CPUFREQ_SHARED_TYPE_ALL	 (2) /* All dependent CPUs should set freq */
@@ -318,6 +321,7 @@ __ATTR(_name, 0644, show_##_name, store_##_name)
 /*********************************************************************
  *                        CPUFREQ 2.6. INTERFACE                     *
  *********************************************************************/
+u64 get_cpu_idle_time(unsigned int cpu, u64 *wall, int io_busy);
 int cpufreq_get_policy(struct cpufreq_policy *policy, unsigned int cpu);
 int cpufreq_update_policy(unsigned int cpu);
 
