@@ -1,32 +1,46 @@
+/*
+ * Copyright (C) 2013-2018, Davidlohr Bueso <davidlohr.bueso@hp.com>
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
 
 #include <linux/kernel.h>
 #include <linux/export.h>
+#include <linux/bitops.h>
 
 /**
- * int_sqrt - rough approximation to sqrt
- * @x: integer of which to calculate the sqrt
+ * int_sqrt() - compute the integer square root.
+ * @x: integer of which to calculate the sqrt.
  *
- * A very rough approximation to the sqrt() function.
+ * Computes: floor(sqrt(x)).
  */
 unsigned long int_sqrt(unsigned long x)
 {
-	unsigned long op, res, one;
+	unsigned long b, m, y = 0;
 
-	op = x;
-	res = 0;
+	if (unlikely(x <= 1))
+		return x;
 
-	one = 1UL << (BITS_PER_LONG - 2);
-	while (one > op)
-		one >>= 2;
+	m = 1UL << (__fls(x) & ~1UL);
+	while (m != 0) {
+		b = y + m;
+		y >>= 1;
 
-	while (one != 0) {
-		if (op >= res + one) {
-			op = op - (res + one);
-			res = res +  2 * one;
+		if (x >= b) {
+			x -= b;
+			y += m;
 		}
-		res /= 2;
-		one /= 4;
+
+		m >>= 2;
 	}
-	return res;
+
+	return y;
 }
 EXPORT_SYMBOL(int_sqrt);
