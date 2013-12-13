@@ -1207,6 +1207,36 @@ struct sched_statistics {
 };
 #endif
 
+#ifdef CONFIG_SCHED_FREQ_INPUT
+#define RAVG_HIST_SIZE				(5)
+#define WINDOW_STATS_WINDOW_SIZE		(10000000)
+#define WINDOW_STATS_WAKEUP_LOAD_THRESHOLD	(80)
+
+enum window_stats_policy {
+	WINDOW_STATS_USE_RECENT,
+	WINDOW_STATS_USE_MAX,
+	WINDOW_STATS_USE_AVG,
+};
+
+/* Runnable average represents frequency scaled cpu-demand of tasks */
+struct ravg {
+	/* The beginning of a window */
+	u64 window_start;
+
+	/* The beginning of an event within a window */
+	u64 mark_start;
+
+	/* Runnuble task indicator within a window */
+	u32 sum;
+
+	/* Maximum sum in RAVG_HIST_SIZE samples within a window */
+	u32 demand;
+
+	/* Last RAVG_HIST_SIZE sums within a window */
+	u32 sum_history[RAVG_HIST_SIZE];
+};
+#endif
+
 struct sched_entity {
 	struct load_weight	load;		/* for load-balancing */
 	struct rb_node		run_node;
@@ -1283,6 +1313,9 @@ struct task_struct {
 	struct sched_entity se;
 	struct sched_rt_entity rt;
 
+#ifdef CONFIG_SCHED_FREQ_INPUT
+	struct ravg ravg;
+#endif
 #ifdef CONFIG_PREEMPT_NOTIFIERS
 	/* list of struct preempt_notifier: */
 	struct hlist_head preempt_notifiers;
@@ -2060,6 +2093,10 @@ extern unsigned int sysctl_sched_min_granularity;
 extern unsigned int sysctl_sched_wakeup_granularity;
 extern unsigned int sysctl_sched_child_runs_first;
 extern unsigned int sysctl_sched_wake_to_idle;
+#ifdef CONFIG_SCHED_FREQ_INPUT
+extern unsigned int sysctl_sched_wakeup_load_threshold;
+extern unsigned int sysctl_sched_window_stats_policy;
+#endif
 
 enum sched_tunable_scaling {
 	SCHED_TUNABLESCALING_NONE,
@@ -2764,6 +2801,14 @@ static inline void set_task_cpu(struct task_struct *p, unsigned int cpu)
 #endif /* CONFIG_SMP */
 
 extern struct atomic_notifier_head migration_notifier_head;
+
+#ifdef CONFIG_SCHED_FREQ_INPUT
+struct migration_notify_data {
+	int src_cpu;
+	int dest_cpu;
+	int load;
+};
+#endif
 
 extern long sched_setaffinity(pid_t pid, const struct cpumask *new_mask);
 extern long sched_getaffinity(pid_t pid, struct cpumask *mask);
