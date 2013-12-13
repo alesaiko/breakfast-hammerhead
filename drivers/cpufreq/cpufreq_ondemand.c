@@ -157,13 +157,25 @@ load_dependent_algorithm:
 static int od_migration_notify(struct notifier_block *nb,
 			       unsigned long target_cpu, void *arg)
 {
-	struct od_cpu_dbs_info_s *dbs_info = get_cpu_dbs_info_s(target_cpu);
+	int src_cpu, dest_cpu;
+	struct od_cpu_dbs_info_s *dbs_info;
+#ifdef CONFIG_SCHED_FREQ_INPUT
+	struct migration_notify_data *mnd = arg;
 
+	/* Window-stats use Migration Notify Data instead of target_cpu */
+	src_cpu = mnd->src_cpu;
+	dest_cpu = mnd->dest_cpu;
+#else
+	src_cpu = (int)arg;
+	dest_cpu = (int)target_cpu;
+#endif
 	/* Return early if synchronization is disabled */
 	if (!od_tuners.sync_on_migration)
 		return NOTIFY_OK;
 
-	atomic_set(&dbs_info->src_sync_cpu, (int)arg);
+	dbs_info = get_cpu_dbs_info_s(dest_cpu);
+	/* Assign source cpu id to an atomic value */
+	atomic_set(&dbs_info->src_sync_cpu, src_cpu);
 
 	/*
 	 * Avoid issuing recursive wakeup call, as sync thread itself could be
