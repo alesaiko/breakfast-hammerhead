@@ -422,6 +422,15 @@ struct rq {
 	u64 avg_idle;
 #endif
 
+#ifdef CONFIG_SCHED_FREQ_INPUT
+	/* Current cpu frequency used by runqueue */
+	unsigned int cur_freq;
+	/* User or thermal defined maximum cpu frequency */
+	unsigned int max_freq;
+	/* Maximum cpu frequency supported by hardware */
+	unsigned int max_possible_freq;
+#endif
+
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 	u64 prev_irq_time;
 #endif
@@ -532,6 +541,11 @@ DECLARE_PER_CPU(int, sd_llc_id);
 
 #include "stats.h"
 #include "auto_group.h"
+
+#ifdef CONFIG_SCHED_FREQ_INPUT
+extern unsigned int sched_ravg_window;
+extern unsigned int pct_task_load(struct task_struct *p);
+#endif
 
 #ifdef CONFIG_CGROUP_SCHED
 
