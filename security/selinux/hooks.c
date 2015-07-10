@@ -3091,6 +3091,45 @@ static void selinux_file_free_security(struct file *file)
 	file_free_security(file);
 }
 
+/*
+ * Check whether a task has the ioctl permission and cmd
+ * operation to an inode.
+ */
+int ioctl_has_perm(const struct cred *cred, struct file *file,
+		   u32 requested, u16 cmd)
+{
+	struct inode *inode = file->f_path.dentry->d_inode;
+	struct inode_security_struct *isec = inode->i_security;
+	struct file_security_struct *fsec = file->f_security;
+	struct lsm_ioctlop_audit ioctl;
+	struct selinux_audit_data sad;
+	struct common_audit_data ad;
+	u32 ssid = cred_sid(cred);
+	u8 xperm = cmd & 0xFF;
+	u8 driver = cmd >> 8;
+	int rc;
+
+	memset(&sad, 0, sizeof(struct selinux_audit_data));
+	COMMON_AUDIT_DATA_INIT(&ad, IOCTL_OP);
+
+	ad.u.op = &ioctl;
+	ad.u.op->cmd = cmd;
+	ad.u.op->path = file->f_path;
+	ad.selinux_audit_data = &sad;
+
+	if (ssid != fsec->sid) {
+		rc = avc_has_perm(ssid, fsec->sid, SECCLASS_FD, FD__USE, &ad);
+		if (IS_ERR_VALUE(rc))
+			return rc;
+	}
+
+	if (unlikely(IS_PRIVATE(inode)))
+		return 0;
+
+	return avc_has_extended_perms(ssid, isec->sid, isec->sclass,
+				      requested, driver, xperm, &ad);
+}
+
 static int selinux_file_ioctl(struct file *file, unsigned int cmd,
 			      unsigned long arg)
 {
@@ -3133,7 +3172,7 @@ static int selinux_file_ioctl(struct file *file, unsigned int cmd,
 	 * to the file's ioctl() function.
 	 */
 	default:
-		error = file_has_perm(cred, file, FILE__IOCTL);
+		error = ioctl_has_perm(cred, file, FILE__IOCTL, (u16)cmd);
 	}
 	return error;
 }
