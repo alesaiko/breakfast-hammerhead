@@ -15,6 +15,7 @@
 
 #include "security.h"
 #include "conditional.h"
+#include "services.h"
 
 /*
  * cond_evaluate_expr evaluates a conditional expr
@@ -617,32 +618,53 @@ int cond_write_list(struct policydb *p, struct cond_node *list, void *fp)
 
 	return 0;
 }
-/* Determine whether additional permissions are granted by the conditional
- * av table, and if so, add them to the result
- */
-void cond_compute_av(struct avtab *ctab, struct avtab_key *key, struct av_decision *avd)
+
+void cond_compute_xperms(struct avtab *ctab, struct avtab_key *key,
+			 struct extended_perms_decision *xpermd)
 {
 	struct avtab_node *node;
 
-	if (!ctab || !key || !avd)
+	if (IS_ERR_OR_NULL(ctab) || IS_ERR_OR_NULL(key) || IS_ERR_OR_NULL(xpermd))
 		return;
 
-	for (node = avtab_search_node(ctab, key); node;
-				node = avtab_search_node_next(node, key->specified)) {
-		if ((u16)(AVTAB_ALLOWED|AVTAB_ENABLED) ==
-		    (node->key.specified & (AVTAB_ALLOWED|AVTAB_ENABLED)))
-			avd->allowed |= node->datum.data;
-		if ((u16)(AVTAB_AUDITDENY|AVTAB_ENABLED) ==
-		    (node->key.specified & (AVTAB_AUDITDENY|AVTAB_ENABLED)))
-			/* Since a '0' in an auditdeny mask represents a
-			 * permission we do NOT want to audit (dontaudit), we use
-			 * the '&' operand to ensure that all '0's in the mask
-			 * are retained (much unlike the allow and auditallow cases).
-			 */
-			avd->auditdeny &= node->datum.data;
-		if ((u16)(AVTAB_AUDITALLOW|AVTAB_ENABLED) ==
-		    (node->key.specified & (AVTAB_AUDITALLOW|AVTAB_ENABLED)))
-			avd->auditallow |= node->datum.data;
+	for (node = avtab_search_node(ctab, key); node != NULL;
+	     node = avtab_search_node_next(node, key->specified))
+		if (node->key.specified & AVTAB_ENABLED)
+			services_compute_xperms_decision(xpermd, node);
+}
+
+/*
+ * Determine whether additional permissions are granted by the conditional
+ * av table, and if so, add them to the result.
+ */
+void cond_compute_av(struct avtab *ctab, struct avtab_key *key,
+		     struct av_decision *avd, struct extended_perms *xperms)
+{
+	struct avtab_node *node;
+
+	if (IS_ERR_OR_NULL(ctab) || IS_ERR_OR_NULL(key) ||
+	    IS_ERR_OR_NULL(avd)  || IS_ERR_OR_NULL(xperms))
+		return;
+
+#define is_specified(nkey)					\
+	((node->key.specified & (nkey | AVTAB_ENABLED)) ==	\
+			   (u16)(nkey | AVTAB_ENABLED))
+
+	for (node = avtab_search_node(ctab, key); node != NULL;
+	     node = avtab_search_node_next(node, key->specified)) {
+		if (is_specified(AVTAB_ALLOWED))
+			avd->allowed |= node->datum.u.data;
+		/*
+		 * Since a '0' in an auditdeny mask represents a permission we
+		 * do NOT want to audit (dontaudit), we use the '&' operand to
+		 * ensure that all '0's in the mask are retained (much unlike
+		 * the allow and auditallow cases).
+		 */
+		if (is_specified(AVTAB_AUDITDENY))
+			avd->auditdeny &= node->datum.u.data;
+		if (is_specified(AVTAB_AUDITALLOW))
+			avd->auditallow |= node->datum.u.data;
+		if (is_specified(AVTAB_XPERMS))
+			services_compute_xperms_drivers(xperms, node);
 	}
-	return;
 }
