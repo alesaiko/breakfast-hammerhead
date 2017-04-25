@@ -1042,4 +1042,13 @@ config TOUCHSCREEN_STATE_NOTIFIER
 
 	  If unsure, say N.
 
+config TOUCHSCREEN_WAKE_GESTURES
+	bool "Wake gestures support for LGE synaptics"
+	depends on TOUCHSCREEN_LGE_SYNAPTICS
+	help
+	  Say Y here if you have an LGE_SYNAPTICS supported touchscreen
+	  and want to use wake gestures.
+
+	  If unsure, say N.
+
 endif

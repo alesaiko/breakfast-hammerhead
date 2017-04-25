@@ -24,6 +24,10 @@
 #include <linux/log2.h>
 #include <linux/qpnp/power-on.h>
 
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+#include <linux/input/wake_gestures.h>
+#endif
+
 /* Common PNP defines */
 #define QPNP_PON_REVISION2(base)		(base + 0x01)
 
@@ -77,6 +81,19 @@
 #define PON_REASON_MAX				8
 
 #define QPNP_KEY_STATUS_DELAY			msecs_to_jiffies(250)
+
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+/*
+ * These variables are used by touch drivers to automatically disable
+ * Wake Gestures if pwrkey_suspend feature was enabled and power button was
+ * pressed.
+ */
+static bool pwrkey_suspend = false;
+module_param(pwrkey_suspend, bool, 0755);
+
+bool pwrkey_pressed = false;
+static unsigned int cnt = 0;
+#endif
 
 enum pon_type {
 	PON_KPDPWR,
@@ -357,6 +374,23 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 	default:
 		return -EINVAL;
 	}
+
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+	if (pwrkey_suspend) {
+		/*
+		 * Ensure that power button was pressed only once. If not, than
+		 * reset the counter.
+		 *
+		 * pwrkey_pressed variable should be reseted in touch driver.
+		 */
+		if (cfg->key_code == KEY_POWER && cnt == 0) {
+			pwrkey_pressed = true;
+			cnt++;
+		} else {
+			cnt = 0;
+		}
+	}
+#endif
 
 	input_report_key(pon->pon_input, cfg->key_code,
 					(pon_rt_sts & pon_rt_bit));

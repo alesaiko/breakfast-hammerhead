@@ -425,6 +425,19 @@ static void vibrator_enable(struct timed_output_dev *dev, int value)
 	spin_unlock_irqrestore(&vib->spinlock, flags);
 }
 
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+/*
+ * This call is used by Wake Gestures module to change vibration level for
+ * gestures.
+ */
+static struct timed_vibrator_data *vib_dev;
+
+void set_vibrate(int value)
+{
+	vibrator_enable(&vib_dev->dev, value);
+}
+#endif
+
 static int vibrator_gpio_init(struct timed_vibrator_data *vib)
 {
 	int rc;
@@ -854,6 +867,11 @@ static int msm8974_pwm_vibrator_probe(struct platform_device *pdev)
 			goto err_sysfs;
 		}
 	}
+
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+	/* Push current vibration data to Wake Gestures' structure */
+	vib_dev = vib;
+#endif
 
 	pr_info("%s: probed\n", __func__);
 	return 0;

@@ -23,6 +23,10 @@
 #include <linux/pwm.h>
 #include <linux/err.h>
 
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+#include <linux/input/wake_gestures.h>
+#endif
+
 #include <asm/system_info.h>
 
 #include "mdss_dsi.h"
@@ -176,6 +180,23 @@ static void mdss_dsi_panel_bklt_dcs(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 void mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 {
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+	bool prevent_sleep = false;
+
+	/* Prevent panel suspend if wake gestures are enabled */
+	prevent_sleep = (s2w_switch > 0) || (dt2w_switch > 0);
+
+	/* Disable Wake Gestures during phone call */
+	if (prevent_sleep && in_phone_call)
+		prevent_sleep = false;
+
+	/*
+	 * Disable Wake Gestures after pressing the power key if
+	 * pwrkey_suspend is enabled
+	 */
+	if (pwrkey_pressed)
+		prevent_sleep = false;
+#endif
 
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
@@ -233,14 +254,33 @@ void mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 			mdss_panel_id == PANEL_LGE_JDI_ORISE_CMD ||
 			mdss_panel_id == PANEL_LGE_JDI_NOVATEK_VIDEO ||
 			mdss_panel_id == PANEL_LGE_JDI_NOVATEK_CMD) {
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+			/* Keep gpio controller awake */
+			if (!prevent_sleep) {
+				if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
+					gpio_set_value((ctrl_pdata->disp_en_gpio), 0);
+				usleep(20 * 1000);
+				gpio_set_value((ctrl_pdata->rst_gpio), 0);
+			}
+#else
 			if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
 				gpio_set_value((ctrl_pdata->disp_en_gpio), 0);
 			usleep(20 * 1000);
 			gpio_set_value((ctrl_pdata->rst_gpio), 0);
+#endif
 		} else {
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+			/* Keep gpio controller awake */
+			if (!prevent_sleep) {
+				gpio_set_value((ctrl_pdata->rst_gpio), 0);
+				if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
+					gpio_set_value((ctrl_pdata->disp_en_gpio), 0);
+			}
+#else
 			gpio_set_value((ctrl_pdata->rst_gpio), 0);
 			if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
 				gpio_set_value((ctrl_pdata->disp_en_gpio), 0);
+#endif
 		}
 	}
 }
@@ -309,6 +349,24 @@ static int mdss_dsi_panel_off(struct mdss_panel_data *pdata)
 {
 	struct mipi_panel_info *mipi;
 	struct mdss_dsi_ctrl_pdata *ctrl = NULL;
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+	bool prevent_sleep = false;
+
+	/* Prevent panel suspend if wake gestures are enabled */
+	prevent_sleep = (s2w_switch > 0) || (dt2w_switch > 0);
+
+	/* Disable Wake Gestures during phone call */
+	if (prevent_sleep && in_phone_call)
+		prevent_sleep = false;
+
+	/*
+	 * Disable Wake Gestures after pressing the power key if
+	 * pwrkey_suspend is enabled
+	 */
+	if (pwrkey_pressed)
+		prevent_sleep = false;
+
+#endif
 
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
@@ -326,6 +384,14 @@ static int mdss_dsi_panel_off(struct mdss_panel_data *pdata)
 		return 0;
 
 	mutex_lock(&panel_cmd_mutex);
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+	/* Keep the whole panel awake */
+	if (prevent_sleep)
+		ctrl->off_cmds.cmds[1].payload[0] = 0x11;
+	else
+		ctrl->off_cmds.cmds[1].payload[0] = 0x10;
+#endif
+
 	if (ctrl->off_cmds.cmd_cnt)
 		mdss_dsi_panel_cmds_send(ctrl, &ctrl->off_cmds);
 	mutex_unlock(&panel_cmd_mutex);

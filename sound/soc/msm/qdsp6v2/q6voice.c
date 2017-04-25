@@ -28,6 +28,9 @@
 #include "audio_acdb.h"
 #include "q6voice.h"
 
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+#include <linux/input/wake_gestures.h>
+#endif
 
 #define TIMEOUT_MS 500
 
@@ -39,6 +42,14 @@
 #define CVP_CAL_SIZE 245760
 /* CVS CAL Size: 49152 = 48 * 1024 */
 #define CVS_CAL_SIZE 49152
+
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+/*
+ * This is required to disable Wake Gestures during phone call.
+ * Useful feature, isn't it?
+ */
+bool in_phone_call = false;
+#endif
 
 enum {
 	VOC_TOKEN_NONE,
@@ -4495,6 +4506,11 @@ uint8_t voc_get_route_flag(uint32_t session_id, uint8_t path_dir)
 	else
 		ret = v->voc_route_state.tx_route_flag;
 
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+	/* Dunno why is it here, but leave it alone */
+	in_phone_call = false;
+#endif
+
 	mutex_unlock(&v->lock);
 
 	return ret;
@@ -4525,6 +4541,12 @@ int voc_end_voice_call(uint32_t session_id)
 
 		v->voc_state = VOC_RELEASE;
 	}
+
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+	/* Phone call ended. Unblock Wake Gestures */
+	in_phone_call = false;
+#endif
+
 	mutex_unlock(&v->lock);
 	return ret;
 }
@@ -4731,6 +4753,12 @@ int voc_start_voice_call(uint32_t session_id)
 		ret = -EINVAL;
 		goto fail;
 	}
+
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+	/* Phone call started. Block Wake Gestures */
+	in_phone_call = true;
+#endif
+
 fail:
 	mutex_unlock(&v->lock);
 	return ret;

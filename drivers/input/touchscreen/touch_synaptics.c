@@ -38,6 +38,35 @@
 
 #include "SynaImage.h"
 
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+#include <linux/input/wake_gestures.h>
+
+/* Use specific irq enable/disable functions to avoid unbalanced interrupt */
+static bool prevent_sleep_irq_wake_enabled = false;
+
+static void prevent_sleep_enable_irq_wake(unsigned int irq)
+{
+	if (!prevent_sleep_irq_wake_enabled) {
+		prevent_sleep_irq_wake_enabled = true;
+		enable_irq_wake(irq);
+		pr_info("touch_synaptics: irq_wake enabled\n");
+	} else {
+		pr_info("touch_synaptics: irq_wake already enabled\n");
+	}
+}
+
+static void prevent_sleep_disable_irq_wake(unsigned int irq)
+{
+	if (prevent_sleep_irq_wake_enabled) {
+		prevent_sleep_irq_wake_enabled = false;
+		disable_irq_wake(irq);
+		pr_info("touch_synaptics: irq_wake disabled\n");
+	} else {
+		pr_info("touch_synaptics: irq_wake already disabled\n");
+	}
+}
+#endif
+
 static struct workqueue_struct *synaptics_wq;
 
 /* RMI4 spec from 511-000405-01 Rev.D
@@ -656,6 +685,11 @@ static void *get_touch_handle(struct i2c_client *client)
  */
 static int touch_i2c_read(struct i2c_client *client, u8 reg, int len, u8 *buf)
 {
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+#define SYNAPTICS_I2C_RETRY 12
+
+	unsigned int retry = 0;
+#endif
 	struct i2c_msg msgs[] = {
 		{
 			.addr = client->addr,
@@ -671,11 +705,29 @@ static int touch_i2c_read(struct i2c_client *client, u8 reg, int len, u8 *buf)
 		},
 	};
 
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+	/*
+	 * Retry to reconnect to I2C device at least
+	 * SYNAPTICS_I2C_RETRY times
+	 */
+	for (retry = 0; retry <= SYNAPTICS_I2C_RETRY; retry++) {
+		if (i2c_transfer(client->adapter, msgs, 2) == 2)
+			break;
+		if (retry == SYNAPTICS_I2C_RETRY) {
+			if (printk_ratelimit())
+				TOUCH_ERR_MSG("transfer error\n");
+			return -EIO;
+		} else {
+			msleep(10);
+		}
+	}
+#else
 	if (i2c_transfer(client->adapter, msgs, 2) < 0) {
 		if (printk_ratelimit())
 			TOUCH_ERR_MSG("transfer error\n");
 		return -EIO;
 	}
+#endif
 
 	return 0;
 }
@@ -1587,6 +1639,13 @@ static int synaptics_parse_dt(struct device *dev, struct touch_platform_data *pd
 
 static int synaptics_ts_start(struct synaptics_ts_data *ts)
 {
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+	static bool prevent_sleep = false;
+
+	/* Prevent panel suspend if wake gestures are enabled */
+	prevent_sleep = (s2w_switch > 0) || (dt2w_switch > 0);
+#endif
+
 	TOUCH_DEBUG_TRACE("%s\n", __func__);
 
 	if (ts->curr_resume_state)
@@ -1604,11 +1663,24 @@ static int synaptics_ts_start(struct synaptics_ts_data *ts)
 	queue_delayed_work(synaptics_wq,
 			&ts->work_init, msecs_to_jiffies(BOOTING_DELAY));
 
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+	/* Panel is active. Disable suspend interrupt. */
+	if (prevent_sleep)
+		prevent_sleep_disable_irq_wake(ts->client->irq);
+#endif
+
 	return 0;
 }
 
 static int synaptics_ts_stop(struct synaptics_ts_data *ts)
 {
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+	static bool prevent_sleep = false;
+
+	/* Prevent panel suspend if wake gestures are enabled */
+	prevent_sleep = (s2w_switch > 0) || (dt2w_switch > 0);
+#endif
+
 	TOUCH_DEBUG_TRACE("%s\n", __func__);
 
 	if (!ts->curr_resume_state) {
@@ -1622,10 +1694,22 @@ static int synaptics_ts_stop(struct synaptics_ts_data *ts)
 		return 0;
 	}
 
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+	/* Enable interrupt to keep panel awake */
+	if (prevent_sleep) {
+		prevent_sleep_enable_irq_wake(ts->client->irq);
+	} else {
+		disable_irq(ts->client->irq);
+		cancel_delayed_work_sync(&ts->work_init);
+		release_all_ts_event(ts);
+		touch_power_cntl(ts, POWER_OFF);
+	}
+#else
 	disable_irq(ts->client->irq);
 	cancel_delayed_work_sync(&ts->work_init);
 	release_all_ts_event(ts);
 	touch_power_cntl(ts, POWER_OFF);
+#endif
 
 	return 0;
 }
@@ -1775,8 +1859,16 @@ static int synaptics_ts_probe(
 	}
 	gpio_direction_input(ts->pdata->irq_gpio);
 
+#ifdef CONFIG_TOUCHSCREEN_WAKE_GESTURES
+	/* Use IRQF_NO_SUSPEND flag to keep panel awake during suspend */
+	pr_info("touch_synaptics: Use IRQF_NO_SUSPEND flag");
+	ret = request_threaded_irq(client->irq, NULL, touch_irq_handler,
+		IRQF_TRIGGER_FALLING | IRQF_ONESHOT | IRQF_NO_SUSPEND,
+					client->name, ts);
+#else
 	ret = request_threaded_irq(client->irq, NULL, touch_irq_handler,
 			IRQF_TRIGGER_FALLING | IRQF_ONESHOT, client->name, ts);
+#endif
 
 	if (ret < 0) {
 		TOUCH_ERR_MSG("request_irq failed. use polling mode\n");
