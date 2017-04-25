@@ -290,6 +290,15 @@ module_param_cb(spkr_drv_wrnd, &spkr_drv_wrnd_param_ops, &spkr_drv_wrnd, 0644);
 MODULE_PARM_DESC(spkr_drv_wrnd,
 	       "Run software workaround to avoid leakage on the speaker drive");
 
+/* Sound control support */
+extern unsigned int snd_ctrl_enabled;
+extern int snd_reg_access(unsigned int reg);
+extern int snd_cache_read(unsigned int reg);
+extern void snd_cache_write(unsigned int reg, unsigned int value);
+
+struct snd_soc_codec *snd_engine_codec_ptr;
+EXPORT_SYMBOL(snd_engine_codec_ptr);
+
 #define WCD9320_RATES (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |\
 			SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_48000 |\
 			SNDRV_PCM_RATE_96000 | SNDRV_PCM_RATE_192000)
@@ -4130,7 +4139,7 @@ static int taiko_volatile(struct snd_soc_codec *ssc, unsigned int reg)
 	return 0;
 }
 
-static int taiko_write(struct snd_soc_codec *codec, unsigned int reg,
+int taiko_write(struct snd_soc_codec *codec, unsigned int reg,
 	unsigned int value)
 {
 	int ret;
@@ -4147,9 +4156,33 @@ static int taiko_write(struct snd_soc_codec *codec, unsigned int reg,
 				reg, ret);
 	}
 
+	/* Do not modify registers if Sound Control is disabled */
+	if (!snd_ctrl_enabled)
+		goto out;
+
+	/*
+	 * Ensure that register is accessable before writing.
+	 *
+	 * Thanks to the locking mechanism, only Sound Control module can call
+	 * snd_cache_write here. snd_ctrl_locked must be zero before calling,
+	 * otherwise this check would fail and cached value would be used
+	 * instead. Such method prevents anything except Sound Control from
+	 * modifying lines' values.
+	 */
+	if (snd_reg_access(reg)) {
+		snd_cache_write(reg, value);
+	} else {
+		/* Use cached value if snd_ctrl_locked is true */
+		if (snd_cache_read(reg) != -1)
+			value = snd_cache_read(reg);
+	}
+
+out:
 	return wcd9xxx_reg_write(codec->control_data, reg, value);
 }
-static unsigned int taiko_read(struct snd_soc_codec *codec,
+EXPORT_SYMBOL(taiko_write);
+
+unsigned int taiko_read(struct snd_soc_codec *codec,
 				unsigned int reg)
 {
 	unsigned int val;
@@ -4173,6 +4206,7 @@ static unsigned int taiko_read(struct snd_soc_codec *codec,
 	val = wcd9xxx_reg_read(codec->control_data, reg);
 	return val;
 }
+EXPORT_SYMBOL(taiko_read);
 
 static int taiko_startup(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
@@ -6497,6 +6531,10 @@ static int taiko_codec_probe(struct snd_soc_codec *codec)
 	int i, rco_clk_rate;
 	void *ptr = NULL;
 	struct wcd9xxx *core = dev_get_drvdata(codec->dev->parent);
+
+	/* Initialize codec data for Sound Control */
+	pr_info("Taiko codec probe...\n");
+	snd_engine_codec_ptr = codec;
 
 	codec->control_data = dev_get_drvdata(codec->dev->parent);
 	control = codec->control_data;
