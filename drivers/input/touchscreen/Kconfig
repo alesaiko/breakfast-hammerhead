@@ -1031,4 +1031,15 @@ config TOUCHSCREEN_CHARGER_NOTIFY
 	  The touch firmware will use this information to decide whether
 	  a new algorithm to reduce the noise impact needs to be applied
 	  or not.
+
+config TOUCHSCREEN_STATE_NOTIFIER
+	bool "Notify screen state to touch driver"
+	depends on FB_MSM_MDSS
+	help
+	  This driver is used as a screen state notifier. It gets the
+	  current screen state from MDSS driver and works mostly the same
+	  as LCD notifier, but has a deffered timer.
+
+	  If unsure, say N.
+
 endif
