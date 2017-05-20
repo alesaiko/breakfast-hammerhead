@@ -1,11 +1,4 @@
 /*
- * Only give sleepers 50% of their service deficit. This allows
- * them to run sooner, but does not allow tons of sleepers to
- * rip the spread apart.
- */
-SCHED_FEAT(GENTLE_FAIR_SLEEPERS, true)
-
-/*
  * Place new tasks ahead so that they do not starve already running
  * tasks
  */
@@ -38,11 +31,6 @@ SCHED_FEAT(LAST_BUDDY, true)
  * cache buddy being migrated away, increases cache locality.
  */
 SCHED_FEAT(CACHE_HOT_BUDDY, true)
-
-/*
- * Use arch dependent cpu power functions
- */
-SCHED_FEAT(ARCH_POWER, false)
 
 SCHED_FEAT(HRTICK, false)
 SCHED_FEAT(DOUBLE_TICK, false)

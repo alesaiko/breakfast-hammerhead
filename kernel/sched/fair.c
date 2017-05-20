@@ -119,6 +119,22 @@ unsigned int sysctl_sched_cfs_bandwidth_slice = 5000UL;
 #endif
 
 /*
+ * Only give sleepers 50% of their service deficit. This allows
+ * them to run sooner, but does not allow tons of sleepers to
+ * rip the spread apart.
+ *
+ * Externed from kernel/ksysfs.c
+ */
+extern unsigned int Lgentle_fair_sleepers;
+
+/*
+ * Use arch dependent cpu power functions.
+ *
+ * Externed from kernel/ksysfs.c
+ */
+extern unsigned int Larch_power;
+
+/*
  * Increase the granularity value when there are more CPUs,
  * because with more CPUs the 'effective latency' as visible
  * to users decreases. But the relationship is not linear,
@@ -1076,7 +1092,7 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
 		 * Halve their sleep time's effect, to allow
 		 * for a gentler effect of sleepers:
 		 */
-		if (sched_feat(GENTLE_FAIR_SLEEPERS))
+		if (Lgentle_fair_sleepers)
 			thresh >>= 1;
 
 		vruntime -= thresh;
@@ -3704,7 +3720,7 @@ static void update_cpu_power(struct sched_domain *sd, int cpu)
 	struct sched_group *sdg = sd->groups;
 
 	if ((sd->flags & SD_SHARE_CPUPOWER) && weight > 1) {
-		if (sched_feat(ARCH_POWER))
+		if (Larch_power)
 			power *= arch_scale_smt_power(sd, cpu);
 		else
 			power *= default_scale_smt_power(sd, cpu);
@@ -3714,7 +3730,7 @@ static void update_cpu_power(struct sched_domain *sd, int cpu)
 
 	sdg->sgp->power_orig = power;
 
-	if (sched_feat(ARCH_POWER))
+	if (Larch_power)
 		power *= arch_scale_freq_power(sd, cpu);
 	else
 		power *= default_scale_freq_power(sd, cpu);
