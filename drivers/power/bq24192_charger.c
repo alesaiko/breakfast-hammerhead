@@ -31,6 +31,10 @@
 #include <linux/of_gpio.h>
 #include <linux/qpnp/qpnp-adc.h>
 
+#ifdef CONFIG_FORCE_FAST_CHARGE
+#include <linux/power/fastchg.h>
+#endif
+
 /* Register definitions */
 #define INPUT_SRC_CONT_REG              0X00
 #define PWR_ON_CONF_REG                 0X01
@@ -163,8 +167,14 @@ struct current_limit_entry {
 };
 
 static struct current_limit_entry adap_tbl[] = {
+/* Increase current limits with Fast Charge as @faux123 did */
+#ifdef CONFIG_FORCE_FAST_CHARGE
+	{1500, 1280},
+	{2000, 1696},
+#else
 	{1200, 1024},
 	{2000, 1536},
+#endif
 };
 
 static int bq24192_step_down_detect_disable(struct bq24192_chip *chip);
@@ -323,10 +333,23 @@ static int bq24192_set_input_i_limit(struct bq24192_chip *chip, int ma)
 		return -EINVAL;
 	}
 
+#ifdef CONFIG_FORCE_FAST_CHARGE
+	/* Override current if Fast Charge is functional */
+	if (force_fast_charge == FAST_CHARGE_ENABLED &&
+	    current_charge_level != NOT_FAST_CHARGING)
+		ma = current_charge_level;
+
+	/* Drop down to the closest current */
+	for (i = ARRAY_SIZE(icl_ma_table) - 1; i >= 0; i--) {
+		if (icl_ma_table[i].icl_ma <= ma)
+			break;
+	}
+#else
 	for (i = ARRAY_SIZE(icl_ma_table) - 1; i >= 0; i--) {
 		if (icl_ma_table[i].icl_ma == ma)
 			break;
 	}
+#endif
 
 	if (i < 0) {
 		pr_err("can't find %d in icl_ma_table. Use min.\n", ma);

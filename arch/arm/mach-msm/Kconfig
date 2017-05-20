@@ -3062,4 +3062,13 @@ config WALL_CLK_SYSFS
 	 Support the wallclk directory in sysfs filesystem to enable the
 	 wall clock simulation and read the current SFN.
 
+config FORCE_FAST_CHARGE
+	bool "Force fast charging (AC/USB)"
+	depends on BQ24192_CHARGER
+	default y
+	help
+	  A simple sysfs interface that makes current limit changeable. It can
+	  be used to improve charging speed by increasing current limits for
+	  both USB and AC power supplies.
+
 endif

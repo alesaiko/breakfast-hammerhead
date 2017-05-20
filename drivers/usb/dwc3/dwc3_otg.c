@@ -24,6 +24,10 @@
 #include "io.h"
 #include "xhci.h"
 
+#ifdef CONFIG_FORCE_FAST_CHARGE
+#include <linux/power/fastchg.h>
+#endif
+
 static void dwc3_otg_reset(struct dwc3_otg *dotg);
 
 static void dwc3_otg_notify_host_mode(struct usb_otg *otg, int host_mode);
@@ -488,6 +492,12 @@ static int dwc3_otg_set_power(struct usb_phy *phy, unsigned mA)
 		return 0;
 	}
 
+#ifdef CONFIG_FORCE_FAST_CHARGE
+	/* Do not do anything if charging is disabled */
+	if (dotg->charger->charging_disabled || mA == 0)
+		current_charge_level = NOT_FAST_CHARGING;
+#endif
+
 	if (dotg->charger->charging_disabled)
 		return 0;
 
@@ -505,6 +515,37 @@ static int dwc3_otg_set_power(struct usb_phy *phy, unsigned mA)
 
 	if ((dotg->charger->chg_type == DWC3_CDP_CHARGER) && mA > 0)
 		mA = DWC3_IDEV_CHG_MAX;
+
+#ifdef CONFIG_FORCE_FAST_CHARGE
+	/*
+	 * Fast Charge main code.
+	 *
+	 * If Fast Charge is enabled, this will detect a power supply
+	 * (USB or AC), read corresponding current from Fast Charge body and
+	 * override current_charge_level variable, that would be used in
+	 * BQ24192 Charger driver to set an appropriate limit.
+	 *
+	 * Briefly, Fast Charge module just makes current limit changeable.
+	 */
+	if (force_fast_charge == FAST_CHARGE_ENABLED) {
+		switch (dotg->charger->chg_type) {
+			/* USB Power supply */
+			case DWC3_SDP_CHARGER:
+			case DWC3_CDP_CHARGER:
+				mA = usb_charge_level;
+				current_charge_level = mA;
+				break;
+			/* AC Power supply */
+			case DWC3_DCP_CHARGER:
+			case DWC3_PROPRIETARY_CHARGER:
+				mA = ac_charge_level;
+				current_charge_level = mA;
+				break;
+			default:
+				break;
+		}
+	}
+#endif
 
 	if (slimport_is_connected() && mA) {
 		mA = slimport_get_chg_current();
