@@ -18,6 +18,11 @@
 #include <linux/backing-dev.h>
 #include "internal.h"
 
+#ifdef CONFIG_DYNAMIC_FSYNC
+extern bool suspended;
+extern bool dfs_active;
+#endif
+
 static bool fsync_enabled = true;
 module_param(fsync_enabled, bool, 0755);
 
@@ -90,10 +95,16 @@ static void sync_one_sb(struct super_block *sb, void *arg)
  * Sync all the data for all the filesystems (called by sys_sync() and
  * emergency sync)
  */
-static void sync_filesystems(int wait)
+#ifndef CONFIG_DYNAMIC_FSYNC
+static
+#endif
+void sync_filesystems(int wait)
 {
 	iterate_supers(sync_one_sb, &wait);
 }
+#ifdef CONFIG_DYNAMIC_FSYNC
+EXPORT_SYMBOL_GPL(sync_filesystems);
+#endif
 
 /*
  * sync everything.  Start out by waking pdflush, because that writes back
@@ -174,6 +185,11 @@ int vfs_fsync_range(struct file *file, loff_t start, loff_t end, int datasync)
 	if (!fsync_enabled)
 		return 0;
 
+#ifdef CONFIG_DYNAMIC_FSYNC
+	if (likely(dfs_active && !suspended))
+		return 0;
+#endif
+
 	if (!file->f_op || !file->f_op->fsync)
 		return -EINVAL;
 	return file->f_op->fsync(file, start, end, datasync);
@@ -217,6 +233,11 @@ SYSCALL_DEFINE1(fsync, unsigned int, fd)
 {
 	if (!fsync_enabled)
 		return 0;
+
+#ifdef CONFIG_DYNAMIC_FSYNC
+	if (likely(dfs_active && !suspended))
+		return 0;
+#endif
 
 	return do_fsync(fd, 0);
 }
@@ -309,6 +330,11 @@ SYSCALL_DEFINE(sync_file_range)(int fd, loff_t offset, loff_t nbytes,
 	if (!fsync_enabled)
 		return 0;
 
+#ifdef CONFIG_DYNAMIC_FSYNC
+	if (likely(dfs_active && !suspended))
+		return 0;
+#endif
+
 	ret = -EINVAL;
 	if (flags & ~VALID_FLAGS)
 		goto out;
@@ -397,6 +423,11 @@ SYSCALL_ALIAS(sys_sync_file_range, SyS_sync_file_range);
 SYSCALL_DEFINE(sync_file_range2)(int fd, unsigned int flags,
 				 loff_t offset, loff_t nbytes)
 {
+#ifdef CONFIG_DYNAMIC_FSYNC
+	if (likely(fsync_enabled && dfs_active && !suspended))
+		return 0;
+#endif
+
 	return sys_sync_file_range(fd, offset, nbytes, flags);
 }
 #ifdef CONFIG_HAVE_SYSCALL_WRAPPERS

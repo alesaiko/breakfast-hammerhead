@@ -281,4 +281,18 @@ endif # NETWORK_FILESYSTEMS
 source "fs/nls/Kconfig"
 source "fs/dlm/Kconfig"
 
+config DYNAMIC_FSYNC
+	bool "DFS Control"
+	depends on TOUCHSCREEN_STATE_NOTIFIER
+	default y
+	help
+	  Disable file synchronization may be beneficial in real-time apps.
+	  It isn't good to completely disable it, though.
+
+	  This driver provides a smart solution: it flushes data to the storage
+	  by calling fsync on some events (suspend, kernel crash, etc.), while
+	  keeping file synchronization disabled most of the time.
+
+	  Say N here, if unsure.
+
 endmenu
