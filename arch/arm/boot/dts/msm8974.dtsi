@@ -1550,20 +1550,20 @@
 		compatible = "qcom,msm-thermal";
 		qcom,sensor-id = <5>;
 		qcom,poll-ms = <250>;
-		qcom,limit-temp = <60>;
-		qcom,temp-hysteresis = <10>;
-		qcom,freq-step = <2>;
+		qcom,limit-temp = <80>;
+		qcom,temp-hysteresis = <5>;
+		qcom,freq-step = <3>;
 		qcom,freq-control-mask = <0xf>;
-		qcom,core-limit-temp = <80>;
-		qcom,core-temp-hysteresis = <10>;
+		qcom,core-limit-temp = <90>;
+		qcom,core-temp-hysteresis = <3>;
 		qcom,core-control-mask = <0xe>;
 		qcom,hotplug-temp = <110>;
-		qcom,hotplug-temp-hysteresis = <20>;
+		qcom,hotplug-temp-hysteresis = <15>;
 		qcom,cpu-sensors = "tsens_tz_sensor5", "tsens_tz_sensor6",
 				"tsens_tz_sensor7", "tsens_tz_sensor8";
 		qcom,freq-mitigation-temp = <110>;
-		qcom,freq-mitigation-temp-hysteresis = <20>;
-		qcom,freq-mitigation-value = <960000>;
+		qcom,freq-mitigation-temp-hysteresis = <15>;
+		qcom,freq-mitigation-value = <1036800>;
 		qcom,freq-mitigation-control-mask = <0x01>;
 		qcom,vdd-restriction-temp = <5>;
 		qcom,vdd-restriction-temp-hysteresis = <10>;
@@ -1587,7 +1587,7 @@
 
 		qcom,vdd-apps-rstr{
 			qcom,vdd-rstr-reg = "vdd_apps";
-			qcom,levels = <1881600 1958400 2265600>;
+			qcom,levels = <1728000 1958400 2265600>;
 			qcom,freq-req;
 		};
 	};
