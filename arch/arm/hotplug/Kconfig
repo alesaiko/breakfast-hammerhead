@@ -15,4 +15,11 @@ config ALUCARD_HOTPLUG
 	help
 	  Generic Alucard-Hotplug CPU hotplug driver for ARM SOCs.
 
+config INTELLI_HOTPLUG
+	bool "Intelli Hotplug"
+	depends on ARCH_MSM
+	default y
+	help
+	  Generic Intelli-Hotplug CPU hotplug driver for ARM SOCs.
+
 endmenu
