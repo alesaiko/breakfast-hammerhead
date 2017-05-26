@@ -1,3 +1,11 @@
 menu "Hotplug drivers"
 
+config MSM_HOTPLUG
+	bool "MSM Hotplug"
+	depends on ARCH_MSM
+	default y
+	help
+	  The MSM hotplug driver controls on-/offlining of additional cores
+	  based on current cpu load.
+
 endmenu
