@@ -132,3 +132,19 @@
 &usb_otg {
 	qcom,hsusb-otg-pnoc-errata-fix;
 };
+
+&krait_regulator_pmic {
+	status = "ok";
+
+	qcom,ctl@2000 {
+		status = "ok";
+	};
+
+	qcom,ps@2100 {
+		status = "ok";
+	};
+
+	qcom,freq@2200 {
+		status = "ok";
+	};
+};
