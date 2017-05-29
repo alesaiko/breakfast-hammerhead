@@ -286,6 +286,7 @@ config ARCH_MSM8974
 	select MSM_RPM_LOG
 	select ARCH_WANT_KMAP_ATOMIC_FLUSH
 	select KRAIT_REGULATOR
+	select HAS_MACH_MEMUTILS
 
 config ARCH_APQ8084
 	bool "APQ8084"
@@ -3058,5 +3059,11 @@ config FORCE_FAST_CHARGE
 	  A simple sysfs interface that makes current limit changeable. It can
 	  be used to improve charging speed by increasing current limits for
 	  both USB and AC power supplies.
+
+config HAS_MACH_MEMUTILS
+	bool "Motorola MSM memcpy enhancements"
+	depends on ARCH_MSM
+	help
+	  Faster memcpy performance for Krait.
 
 endif
