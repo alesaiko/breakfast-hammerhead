@@ -33,11 +33,13 @@
  */
 
 #define DEF_FREQUENCY_DOWN_DIFFERENTIAL		(10)
-#define DEF_FREQUENCY_UP_THRESHOLD		(80)
-#define DEF_SAMPLING_DOWN_FACTOR		(1)
-#define MAX_SAMPLING_DOWN_FACTOR		(100000)
-#define MICRO_FREQUENCY_DOWN_DIFFERENTIAL	(3)
-#define MICRO_FREQUENCY_UP_THRESHOLD		(95)
+#define DEF_FREQUENCY_UP_THRESHOLD		(77)
+#define DEF_FREQUENCY_UP_THRESHOLD_ANY_CPU_LOAD	(62)
+#define DEF_FREQUENCY_UP_THRESHOLD_MULTI_CORE	(56)
+#define DEF_SAMPLING_DOWN_FACTOR		(4)
+#define MAX_SAMPLING_DOWN_FACTOR		(100)
+#define MICRO_FREQUENCY_DOWN_DIFFERENTIAL	(5)
+#define MICRO_FREQUENCY_UP_THRESHOLD		(80)
 #define MICRO_FREQUENCY_MIN_SAMPLE_RATE		(10000)
 #define MIN_FREQUENCY_UP_THRESHOLD		(11)
 #define MAX_FREQUENCY_UP_THRESHOLD		(100)
@@ -58,7 +60,7 @@
 static unsigned int min_sampling_rate;
 
 #define LATENCY_MULTIPLIER			(1000)
-#define MIN_LATENCY_MULTIPLIER			(100)
+#define MIN_LATENCY_MULTIPLIER			(10)
 #define TRANSITION_LATENCY_LIMIT		(10 * 1000 * 1000)
 
 #define POWERSAVE_BIAS_MAXLEVEL			(1000)
@@ -140,8 +142,8 @@ static struct dbs_tuners {
 	.up_threshold = DEF_FREQUENCY_UP_THRESHOLD,
 	.sampling_down_factor = DEF_SAMPLING_DOWN_FACTOR,
 	.down_differential = DEF_FREQUENCY_DOWN_DIFFERENTIAL,
-	.down_differential_multi_core = MICRO_FREQUENCY_DOWN_DIFFERENTIAL,
-	.up_threshold_any_cpu_load = DEF_FREQUENCY_UP_THRESHOLD,
+	.down_differential_multi_core = DEF_FREQUENCY_UP_THRESHOLD_MULTI_CORE,
+	.up_threshold_any_cpu_load = DEF_FREQUENCY_UP_THRESHOLD_ANY_CPU_LOAD,
 	.ignore_nice = 0,
 	.powersave_bias = 0,
 	.optimal_freq = 0,
@@ -929,6 +931,10 @@ static int should_io_be_busy(void)
 	    boot_cpu_data.x86 == 6 &&
 	    boot_cpu_data.x86_model >= 15)
 		return 1;
+#endif
+#if defined(CONFIG_ARCH_APQ8064) || defined(CONFIG_ARCH_MSM8974)
+	/* These platforms use io_is_busy in their stock firmwares */
+	return 1;
 #endif
 	return 0;
 }
