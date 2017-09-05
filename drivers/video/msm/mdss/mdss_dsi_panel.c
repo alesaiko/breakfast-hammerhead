@@ -36,6 +36,7 @@ extern void lm3630_lcd_backlight_set_level(int level);
 #endif
 
 static struct mdss_dsi_phy_ctrl phy_params;
+static struct dsi_panel_cmds *on_cmds_data;
 
 void mdss_dsi_panel_pwm_cfg(struct mdss_dsi_ctrl_pdata *ctrl)
 {
@@ -746,6 +747,92 @@ error:
 	return -EINVAL;
 }
 
+#define create_on_cmd_payload_node(node, cmd)				\
+static ssize_t show_##node(struct device *dev,				\
+			   struct device_attribute *attr,		\
+			   char *buf)					\
+{									\
+	ssize_t len = 0;						\
+	short dlen, i;							\
+									\
+	if (IS_ERR_OR_NULL(on_cmds_data) ||				\
+	    IS_ERR_OR_NULL(on_cmds_data->cmds))				\
+		return scnprintf(buf, 15, "<unsupported>\n");		\
+									\
+	dlen = on_cmds_data->cmds[cmd].dchdr.dlen - 1;			\
+	if (unlikely(dlen < 2))						\
+		return scnprintf(buf, 15, "<unsupported>\n");		\
+									\
+	for (i = 1; i < dlen; ++i)					\
+		len += scnprintf(buf + len, 5, "%hhu ",			\
+				 on_cmds_data->cmds[cmd].payload[i]);	\
+									\
+	scnprintf(buf + len - 1, 2, "\n");				\
+									\
+	return len;							\
+}									\
+									\
+static ssize_t store_##node(struct device *dev,				\
+			    struct device_attribute *attr,		\
+			    const char *buf, size_t count)		\
+{									\
+	const char *cp = buf;						\
+	unsigned char val;						\
+	short dlen, i;							\
+	int ret;							\
+									\
+	if (IS_ERR_OR_NULL(on_cmds_data) ||				\
+	    IS_ERR_OR_NULL(on_cmds_data->cmds))				\
+		return -ENODEV;						\
+									\
+	dlen = on_cmds_data->cmds[cmd].dchdr.dlen - 1;			\
+	if (unlikely(dlen < 2))						\
+		return -ENOENT;						\
+									\
+	for (i = 1; i < dlen; ++i) {					\
+		ret = sscanf(cp, "%hhu", &val);				\
+		if (ret != 1 || (char)val < 0)				\
+			return -EINVAL;					\
+									\
+		on_cmds_data->cmds[cmd].payload[i] = val;		\
+		if (unlikely(cmd == 5 && i == (dlen - 1)))		\
+			on_cmds_data->cmds[cmd].payload[dlen] = val;	\
+									\
+		cp = strnchr(cp, 4, ' ');				\
+		if (IS_ERR_OR_NULL(cp))					\
+			break;						\
+		cp++;							\
+	}								\
+									\
+	return count;							\
+}									\
+									\
+static DEVICE_ATTR(node, 0644, show_##node, store_##node)
+
+create_on_cmd_payload_node(kgamma_w,   5);
+create_on_cmd_payload_node(kgamma_rp,  7);
+create_on_cmd_payload_node(kgamma_rn,  9);
+create_on_cmd_payload_node(kgamma_gp, 11);
+create_on_cmd_payload_node(kgamma_gn, 13);
+create_on_cmd_payload_node(kgamma_bp, 15);
+create_on_cmd_payload_node(kgamma_bn, 17);
+
+static struct attribute *dsi_panel_attrs[] = {
+	&dev_attr_kgamma_w.attr,
+	&dev_attr_kgamma_rp.attr,
+	&dev_attr_kgamma_rn.attr,
+	&dev_attr_kgamma_gp.attr,
+	&dev_attr_kgamma_gn.attr,
+	&dev_attr_kgamma_bp.attr,
+	&dev_attr_kgamma_bn.attr,
+	NULL
+};
+
+static struct attribute_group dsi_panel_attr_group = {
+	.name = "dsi_panel",
+	.attrs = dsi_panel_attrs,
+};
+
 static int __devinit mdss_dsi_panel_probe(struct platform_device *pdev)
 {
 	int rc = 0;
@@ -770,6 +857,20 @@ static int __devinit mdss_dsi_panel_probe(struct platform_device *pdev)
 	vendor_pdata.on = mdss_dsi_panel_on;
 	vendor_pdata.off = mdss_dsi_panel_off;
 	vendor_pdata.bl_fnc = mdss_dsi_panel_bl_ctrl;
+
+	/*
+	 * Nodes ensure that there is an access to vendor panel data before
+	 * manipulating with panel_on commands, so error checking here is
+	 * not required. We don't want to crash the whole panel if a problem
+	 * with sysfs interface occurred.
+	 */
+	on_cmds_data = &vendor_pdata.on_cmds;
+	if (IS_ERR_OR_NULL(on_cmds_data))
+		pr_err("%s: Unable to get panel on_cmds data\n", __func__);
+
+	rc = sysfs_create_group(&module_kset->kobj, &dsi_panel_attr_group);
+	if (IS_ERR_VALUE(rc))
+		pr_err("%s: Unable to create sysfs group\n", __func__);
 
 	rc = dsi_panel_device_register(pdev, &vendor_pdata);
 	if (rc)
