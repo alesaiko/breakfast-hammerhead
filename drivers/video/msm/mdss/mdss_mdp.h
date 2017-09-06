@@ -513,6 +513,12 @@ int mdss_mdp_pa_config(struct mdss_mdp_ctl *ctl,
 int mdss_mdp_pcc_config(struct mdss_mdp_ctl *ctl,
 				struct mdp_pcc_cfg_data *cfg_ptr,
 				u32 *copyback);
+#ifdef CONFIG_FB_MSM_MDSS_KCAL_CTRL
+int mdss_mdp_pa_config_kcal(struct mdss_mdp_ctl *ctl,
+				struct mdp_pa_cfg_data *config);
+int mdss_mdp_pcc_config_kcal(struct mdss_mdp_ctl *ctl,
+				struct mdp_pcc_cfg_data *config);
+#endif
 int mdss_mdp_igc_lut_config(struct mdss_mdp_ctl *ctl,
 				struct mdp_igc_lut_data *config,
 				u32 *copyback, u32 copy_from_kernel);
