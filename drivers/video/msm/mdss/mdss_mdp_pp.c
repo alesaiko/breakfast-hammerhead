@@ -1328,17 +1328,25 @@ static int pp_get_dspp_num(u32 disp_num, u32 *dspp_num)
 	return 0;
 }
 
-int mdss_mdp_pa_config(struct mdss_mdp_ctl *ctl, struct mdp_pa_cfg_data *config,
-			u32 *copyback)
+static inline int __mdss_mdp_pa_config(struct mdss_mdp_ctl *ctl,
+				       struct mdp_pa_cfg_data *config,
+				       u32 *copyback, bool kcal)
 {
 	int ret = 0;
 	u32 pa_offset, disp_num, dspp_num = 0;
 
-	if (!ctl)
-		return -EINVAL;
+	/*
+	 * KCAL module can push NULL-ed control data in some cases. As the
+	 * function is expected to be proceed anyway to update data in MDSS
+	 * registers, just ignore the absence of panel control data and omit
+	 * the panel setup at the end if KCAL mode is used. Generic call's
+	 * behaviour is unchanged.
+	 */
+	if (IS_ERR_OR_NULL(ctl) && !kcal)
+		return -ENODEV;
 
-	if ((config->block < MDP_LOGICAL_BLOCK_DISP_0) ||
-		(config->block >= MDP_BLOCK_MAX))
+	if (config->block < MDP_LOGICAL_BLOCK_DISP_0 ||
+	    config->block >= MDP_BLOCK_MAX)
 		return -EINVAL;
 
 	mutex_lock(&mdss_pp_mutex);
@@ -1346,34 +1354,53 @@ int mdss_mdp_pa_config(struct mdss_mdp_ctl *ctl, struct mdp_pa_cfg_data *config,
 
 	if (config->pa_data.flags & MDP_PP_OPS_READ) {
 		ret = pp_get_dspp_num(disp_num, &dspp_num);
-		if (ret) {
-			pr_err("%s, no dspp connects to disp %d",
-				__func__, disp_num);
+		if (IS_ERR_VALUE(ret)) {
+			pr_err("PA: No connects to display %u\n", disp_num);
 			goto pa_config_exit;
 		}
+
 		mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
 		pa_offset = MDSS_MDP_REG_DSPP_OFFSET(dspp_num) +
-			  MDSS_MDP_REG_DSPP_PA_BASE;
-		config->pa_data.hue_adj = MDSS_MDP_REG_READ(pa_offset);
+			    MDSS_MDP_REG_DSPP_PA_BASE;
+
+		config->pa_data.hue_adj  = MDSS_MDP_REG_READ(pa_offset);
 		pa_offset += 4;
-		config->pa_data.sat_adj = MDSS_MDP_REG_READ(pa_offset);
+		config->pa_data.sat_adj  = MDSS_MDP_REG_READ(pa_offset);
 		pa_offset += 4;
-		config->pa_data.val_adj = MDSS_MDP_REG_READ(pa_offset);
+		config->pa_data.val_adj  = MDSS_MDP_REG_READ(pa_offset);
 		pa_offset += 4;
 		config->pa_data.cont_adj = MDSS_MDP_REG_READ(pa_offset);
-		*copyback = 1;
+
+		if (copyback)
+			*copyback = 1;
 		mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
 	} else {
 		mdss_pp_res->pa_disp_cfg[disp_num] = config->pa_data;
 		mdss_pp_res->pp_disp_flags[disp_num] |= PP_FLAGS_DIRTY_PA;
 	}
-
 pa_config_exit:
 	mutex_unlock(&mdss_pp_mutex);
-	if (!ret)
+
+	if (ctl && !ret)
 		mdss_mdp_pp_setup(ctl);
+
 	return ret;
 }
+
+int mdss_mdp_pa_config(struct mdss_mdp_ctl *ctl,
+		       struct mdp_pa_cfg_data *config,
+		       u32 *copyback)
+{
+	return __mdss_mdp_pa_config(ctl, config, copyback, false);
+}
+
+#ifdef CONFIG_FB_MSM_MDSS_KCAL_CTRL
+int mdss_mdp_pa_config_kcal(struct mdss_mdp_ctl *ctl,
+			    struct mdp_pa_cfg_data *config)
+{
+	return __mdss_mdp_pa_config(ctl, config, NULL, true);
+}
+#endif
 
 static void pp_read_pcc_regs(u32 offset,
 				struct mdp_pcc_cfg_data *cfg_ptr)
@@ -1501,18 +1528,25 @@ static void pp_update_pcc_regs(u32 offset,
 	MDSS_MDP_REG_WRITE(offset + 8, cfg_ptr->b.rgb_1);
 }
 
-int mdss_mdp_pcc_config(struct mdss_mdp_ctl *ctl,
+static inline int __mdss_mdp_pcc_config(struct mdss_mdp_ctl *ctl,
 					struct mdp_pcc_cfg_data *config,
-					u32 *copyback)
+					u32 *copyback, bool kcal)
 {
 	int ret = 0;
-	u32 base, disp_num, dspp_num = 0;
+	u32 pcc_offset, disp_num, dspp_num = 0;
 
-	if (!ctl)
-		return -EINVAL;
+	/*
+	 * KCAL module can push NULL-ed control data in some cases. As the
+	 * function is expected to be proceed anyway to update data in MDSS
+	 * registers, just ignore the absence of panel control data and omit
+	 * the panel setup at the end if KCAL mode is used. Generic call's
+	 * behaviour is unchanged.
+	 */
+	if (IS_ERR_OR_NULL(ctl) && !kcal)
+		return -ENODEV;
 
-	if ((config->block < MDP_LOGICAL_BLOCK_DISP_0) ||
-		(config->block >= MDP_BLOCK_MAX))
+	if (config->block < MDP_LOGICAL_BLOCK_DISP_0 ||
+	    config->block >= MDP_BLOCK_MAX)
 		return -EINVAL;
 
 	mutex_lock(&mdss_pp_mutex);
@@ -1520,30 +1554,47 @@ int mdss_mdp_pcc_config(struct mdss_mdp_ctl *ctl,
 
 	if (config->ops & MDP_PP_OPS_READ) {
 		ret = pp_get_dspp_num(disp_num, &dspp_num);
-		if (ret) {
-			pr_err("%s, no dspp connects to disp %d",
-				__func__, disp_num);
+		if (IS_ERR_VALUE(ret)) {
+			pr_err("PCC: No connects to display %u\n", disp_num);
 			goto pcc_config_exit;
 		}
 
 		mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
+		pcc_offset = MDSS_MDP_REG_DSPP_OFFSET(dspp_num) +
+			     MDSS_MDP_REG_DSPP_PCC_BASE;
 
-		base = MDSS_MDP_REG_DSPP_OFFSET(dspp_num) +
-			  MDSS_MDP_REG_DSPP_PCC_BASE;
-		pp_read_pcc_regs(base, config);
-		*copyback = 1;
+		pp_read_pcc_regs(pcc_offset, config);
+
+		if (copyback)
+			*copyback = 1;
 		mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
 	} else {
 		mdss_pp_res->pcc_disp_cfg[disp_num] = *config;
 		mdss_pp_res->pp_disp_flags[disp_num] |= PP_FLAGS_DIRTY_PCC;
 	}
-
 pcc_config_exit:
 	mutex_unlock(&mdss_pp_mutex);
-	if (!ret)
+
+	if (ctl && !ret)
 		mdss_mdp_pp_setup(ctl);
+
 	return ret;
 }
+
+int mdss_mdp_pcc_config(struct mdss_mdp_ctl *ctl,
+			struct mdp_pcc_cfg_data *config,
+			u32 *copyback)
+{
+	return __mdss_mdp_pcc_config(ctl, config, copyback, false);
+}
+
+#ifdef CONFIG_FB_MSM_MDSS_KCAL_CTRL
+int mdss_mdp_pcc_config_kcal(struct mdss_mdp_ctl *ctl,
+			     struct mdp_pcc_cfg_data *config)
+{
+	return __mdss_mdp_pcc_config(ctl, config, NULL, true);
+}
+#endif
 
 static void pp_read_igc_lut(struct mdp_igc_lut_data *cfg,
 				u32 offset, u32 blk_idx)
