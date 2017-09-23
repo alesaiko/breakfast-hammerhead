@@ -342,6 +342,11 @@ cycle_t arch_counter_get_cntpct(void)
 }
 EXPORT_SYMBOL(arch_counter_get_cntpct);
 
+static inline cycle_t arch_counter_get_cntvct(void)
+{
+	return get_cntvct_func();
+}
+
 static cycle_t arch_counter_read(struct clocksource *cs)
 {
 	return arch_counter_get_cntpct();
@@ -360,23 +365,9 @@ static struct clocksource clocksource_counter = {
 	.flags	= CLOCK_SOURCE_IS_CONTINUOUS | CLOCK_SOURCE_SUSPEND_NONSTOP,
 };
 
-static u32 arch_counter_get_cntvct32(void)
+static cycle_t notrace arch_timer_update_sched_clock(void)
 {
-	cycle_t cntvct;
-
-	cntvct = get_cntvct_func();
-
-	/*
-	 * The sched_clock infrastructure only knows about counters
-	 * with at most 32bits. Forget about the upper 24 bits for the
-	 * time being...
-	 */
-	return (u32)(cntvct & (u32)~0);
-}
-
-static u32 notrace arch_timer_update_sched_clock(void)
-{
-	return arch_counter_get_cntvct32();
+	return arch_counter_get_cntvct();
 }
 
 static void __cpuinit arch_timer_stop(struct clock_event_device *clk)
@@ -400,7 +391,8 @@ static void __init arch_timer_counter_init(void)
 {
 	clocksource_register_hz(&clocksource_counter, arch_timer_rate);
 
-	setup_sched_clock(arch_timer_update_sched_clock, 32, arch_timer_rate);
+	sched_clock_register(arch_timer_update_sched_clock, 56,
+			     arch_timer_rate);
 
 	/* Use the architected timer for the delay loop. */
 	arch_delay_timer.read_current_timer = &arch_timer_read_current_timer;
