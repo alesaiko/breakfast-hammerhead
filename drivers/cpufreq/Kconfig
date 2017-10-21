@@ -27,6 +27,18 @@ config SCHED_FREQ_INPUT
 	  help determine need for changing frequency well in advance of what
 	  a governor would have been able to detect on its own.
 
+config CPU_BOOST
+	tristate "Event base short term CPU freq boost"
+	depends on SCHED_FREQ_INPUT
+	help
+	  This driver boosts the frequency of one or more CPUs based on
+	  various events that might occur in the system. As of now, the
+	  events it reacts to are:
+	  - Migration of important threads from one CPU to another.
+	  - Touchscreen, touchpad, keypad input events.
+
+	  If in doubt, say N.
+
 config CPU_FREQ_TABLE
 	tristate
 
