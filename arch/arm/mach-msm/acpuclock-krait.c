@@ -617,6 +617,77 @@ static struct acpuclk_data acpuclk_krait_data = {
 	.get_rate = acpuclk_krait_get_rate,
 };
 
+/**
+ * acpuclk_krait_freq_get_vdd() - get CPUFreq->VDD table.
+ * @buf: buffer to store the data to.
+ *
+ * This function can be used by cpufreq framework to print voltage level
+ * corresponding to a used frequency. This can be useful while tracing
+ * the CPU stability using different voltage levels for each frequency.
+ */
+ssize_t acpuclk_krait_freq_get_vdd(char *buf)
+{
+	const struct acpu_level *l;
+	ssize_t len = 0;
+
+	/* VDDs on frequencies are CPU unbound */
+	for (l = drv.acpu_freq_tbl; l->speed.khz != 0; ++l)
+		if (l->use_for_scaling)
+			len += scnprintf(buf + len, 18, "%lumhz: %d mV\n",
+				l->speed.khz / 1000, l->vdd_core / 1000);
+
+	return len;
+}
+
+/**
+ * acpuclk_krait_freq_set_vdd() - set up CPUFreq->VDD table.
+ * @buf: buffer to read the data from.
+ *
+ * This function can be used by cpufreq framework to set voltage level
+ * corresponding to a used frequency. This can be useful while tracing
+ * the CPU stability using different voltage levels for each frequency.
+ */
+ssize_t acpuclk_krait_freq_set_vdd(const char *buf)
+{
+	/*
+	 * Scalable is used here just to get upper VDD limit, thus it is
+	 * unnecessary to use any but main CPU. acpuclk_krait_set_rate()
+	 * will properly apply new voltages on each CPU right after an
+	 * appropriate reason appears, so leave all the rest onto it.
+	 */
+	const struct scalable *sc = &drv.scalable[CPU0];
+	int min_vdd, max_vdd, ret, val;
+	char string[6] = { 0 };
+	struct acpu_level *l;
+	const char *cp = buf;
+
+	/* Set up VDD limits. These are shared across all CPUs. */
+	min_vdd = regulator_get_current_limit(sc->vreg[VREG_CORE].reg) / 1000;
+	max_vdd = (sc->vreg[VREG_CORE].max_vdd -
+			(enable_boost ? drv.boost_uv : 0)) / 1000;
+
+	for (l = drv.acpu_freq_tbl; l->speed.khz != 0; ++l) {
+		if (!l->use_for_scaling)
+			continue;
+
+		/* Read values line by line */
+		ret = sscanf(cp, "%s", string);
+		if (unlikely(ret != 1))
+			return -EINVAL;
+
+		ret = kstrtoint(string, 10, &val);
+		if (ret != 0 || val < min_vdd || val > max_vdd)
+			return -EINVAL;
+
+		/* Get values in mV, but store in uV */
+		l->vdd_core = val * 1000;
+
+		cp += strlen(string) + 1;
+	}
+
+	return 0;
+}
+
 /* Initialize a HFPLL at a given rate and enable it. */
 static void __cpuinit hfpll_init(struct scalable *sc,
 			      const struct core_speed *tgt_s)
