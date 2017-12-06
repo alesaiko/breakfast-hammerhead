@@ -4176,6 +4176,23 @@ static unsigned int taiko_read(struct snd_soc_codec *codec,
 	return val;
 }
 
+static int taiko_filter(struct snd_soc_codec *codec, unsigned int reg)
+{
+	struct taiko_priv *taiko = snd_soc_codec_get_drvdata(codec);
+	struct snd_ctrl_data *snd_data = taiko->ctrl_data;
+	int i;
+
+	if (!snd_ctrl_data_handled(snd_data) ||
+	    !snd_ctrl_has_bit(snd_data, SND_CTRL_BYPASS_IOCTL))
+		return 0;
+
+	for_each_snd_line(i)
+		if (reg == snd_data->line[i].reg)
+			return -EINVAL;
+
+	return 0;
+}
+
 static int taiko_startup(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
 {
@@ -6584,6 +6601,7 @@ static int taiko_codec_probe(struct snd_soc_codec *codec)
 	taiko->ctrl_data->name = codec->name;
 	taiko->ctrl_data->read = taiko_read;
 	taiko->ctrl_data->write = taiko_write;
+	taiko->ctrl_data->flags = SND_CTRL_BYPASS_IOCTL;
 
 	ret = snd_ctrl_register(taiko->ctrl_data);
 	if (IS_ERR_VALUE(ret)) {
@@ -6723,6 +6741,7 @@ static struct snd_soc_codec_driver soc_codec_dev_taiko = {
 
 	.read = taiko_read,
 	.write = taiko_write,
+	.filter = taiko_filter,
 
 	.readable_register = taiko_readable,
 	.volatile_register = taiko_volatile,
