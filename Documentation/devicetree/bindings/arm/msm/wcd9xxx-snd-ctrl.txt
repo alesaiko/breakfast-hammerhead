@@ -1,0 +1,57 @@
+Qualcomm WCD9xxx SysFS Sound Gain Controller
+
+This is a SysFS-based analogue of IOCTL sound register read/write operations
+handler. It was implemented to simplify the intercommunication with sound codec
+registers (so-called lines) and allow to control them via a simple sysfs entry.
+Its main purpose is to replace a hacky FauxSound with an appropriate variant
+that provides the same functionality.  This module allows to manipulate with
+almost every register acquired by codec implementation with help of its generic
+interface.
+
+The Device Tree representation of WCD9xxx Sound Gain Controller should be:
+
+Required properties:
+- compatible:		"qcom,wcd9xxx-snd-ctrl".
+- qcom,codec_name:	The name of an expected codec, which is expected to be
+			controlled via the sysfs module. A codec with this name
+			will be used as global immediately after registration.
+- One of the optional properties below: otherwise, there is no sense in having
+			Device Tree representation as nothing will be set in
+			target sound control data.
+
+Optional properties:
+- qcom,mic_line:	Sound line (register) of main microphone followed by
+			its default gain.
+- qcom,cam_mic_line:	Sound line (register) of camera microphone followed by
+			its default gain.
+- qcom,speaker_l_line:	Sound line (register) of left speaker channel followed
+			by its default gain.
+- qcom,speaker_r_line:	Sound line (register) of right speaker channel followed
+			by its default gain. In case the device has only one
+			main speaker, this must be equal to the previous
+			property.
+- qcom,headphone_l_line: Sound line (register) of left headphone channel
+			followed by its default gain.
+- qcom,headphone_r_line: Sound line (register) of right headphone channel
+			followed by its default gain. In case the device has
+			only one headphone output, this should be equal to the
+			previous property.
+
+			Value range of all lines above: 0 - 0x3FF.
+			Value range of all gains above: 0 - 256.
+
+Note that Sound Gain Controller does not check the bounds of values that come
+from DT/OF to simplify the code. You must ensure the values are within ranges
+above by yourself.
+
+Example:
+	qcom,wcd9xxx-snd-ctrl {
+		compatible = "qcom,wcd9xxx-snd-ctrl"
+		qcom,codec_name = "taiko_codec";
+		qcom,mic_line = <0x251 5>;
+		qcom,cam_mic_line = <0x249 5>;
+		qcom,speaker_l_line = <0x2E7 8>;
+		qcom,speaker_r_line = <0x2E7 8>;
+		qcom,headphone_l_line = <0x2B7 3>;
+		qcom,headphone_r_line = <0x2BF 3>;
+	};
