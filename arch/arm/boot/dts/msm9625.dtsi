@@ -651,6 +651,11 @@
 			prim-i2s-gpio-mclk = <&msmgpio 71 0>;
 	};
 
+	qcom,wcd9xxx-snd-ctrl {
+		compatible = "qcom,wcd9xxx-snd-ctrl";
+		status = "disabled";
+	};
+
 	qcom,msm-adsp-loader {
 		compatible = "qcom,adsp-loader";
 		qcom,adsp-state = <2>;
