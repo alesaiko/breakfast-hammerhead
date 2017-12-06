@@ -853,6 +853,11 @@
 		qcom,sec-auxpcm-gpio-dout = <&msmgpio 82 0>;
 	};
 
+	wcd9xxx: qcom,wcd9xxx-snd-ctrl {
+		compatible = "qcom,wcd9xxx-snd-ctrl";
+		status = "disabled";
+	};
+
 	spmi_bus: qcom,spmi@fc4c0000 {
 		cell-index = <0>;
 		compatible = "qcom,spmi-pmic-arb";
