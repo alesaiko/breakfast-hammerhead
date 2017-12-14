@@ -861,12 +861,6 @@
 		qcom,num-locks = <8>;
 	};
 
-	ldrex_spinlock: qcom,ipc-spinlock@fa00000 {
-		compatible = "qcom,ipc-spinlock-ldrex";
-		reg = <0xfa00000 0x200000>;
-		status = "disable";
-	};
-
 	cpu-pmu {
                 compatible = "arm,cortex-a5-pmu";
                 qcom,irq-is-percpu;
