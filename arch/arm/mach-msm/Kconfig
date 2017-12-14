@@ -8,7 +8,6 @@ config ARCH_MSM7X01A
 	select MSM_VIC
 	select CPU_V6
 	select GPIO_MSM_V1
-	select MSM_REMOTE_SPINLOCK_SWP
 
 config ARCH_MSM7X25
 	bool "MSM7x25"
@@ -16,7 +15,6 @@ config ARCH_MSM7X25
 	select MSM_VIC
 	select CPU_V6
 	select GPIO_MSM_V1
-	select MSM_REMOTE_SPINLOCK_SWP
 	select MULTI_IRQ_HANDLER
 
 config ARCH_MSM7X27
@@ -28,7 +26,6 @@ config ARCH_MSM7X27
 	select CPU_V6 if MSM_SOC_REV_NONE
 	select CPU_V7 if MSM_SOC_REV_A
 	select GPIO_MSM_V1
-	select MSM_REMOTE_SPINLOCK_SWP if MSM_SOC_REV_NONE
 	select MSM_GPIOMUX
 	select REGULATOR
 	select MULTI_IRQ_HANDLER
@@ -47,7 +44,6 @@ config ARCH_MSM7X30
 	select MSM_VIC
 	select CPU_V7
 	select GPIO_MSM_V1
-	select MSM_REMOTE_SPINLOCK_DEKKERS
 	select ARCH_SPARSEMEM_ENABLE
 	select ARCH_HAS_HOLES_MEMORYMODEL
 	select MIGRATION
@@ -69,7 +65,6 @@ config ARCH_QSD8X50
 	select MSM_VIC
 	select CPU_V7
 	select GPIO_MSM_V1
-	select MSM_REMOTE_SPINLOCK_LDREX
 	select CPU_USE_DOMAINS
 	select EMULATE_DOMAIN_MANAGER_V7
 	select MSM_GPIOMUX
@@ -83,7 +78,6 @@ config ARCH_MSM8X60
 	select SMP_PARALLEL_START if SMP
 	select ARM_GIC
 	select CPU_V7
-	select MSM_REMOTE_SPINLOCK_LDREX
 	select ARCH_REQUIRE_GPIOLIB
 	select MSM_ADM3
 	select REGULATOR
@@ -344,7 +338,6 @@ config ARCH_FSM9XXX
 	select ARCH_MSM_SCORPION
 	select MSM_VIC
 	select CPU_V7
-	select MSM_REMOTE_SPINLOCK_LDREX
 	select GPIO_FSM9XXX
 	select MULTI_IRQ_HANDLER
 	select MSM_DALRPC
@@ -662,12 +655,6 @@ config MSM_LPM_TEST
 config MSM_XO
 	bool
 
-config MSM_REMOTE_SPINLOCK_DEKKERS
-	bool
-config MSM_REMOTE_SPINLOCK_SWP
-	bool
-config MSM_REMOTE_SPINLOCK_LDREX
-	bool
 config MSM_REMOTE_SPINLOCK_SFPB
 	bool
 config MSM_ADM3

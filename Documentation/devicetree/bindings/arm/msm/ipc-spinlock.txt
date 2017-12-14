@@ -13,15 +13,3 @@ Example:
 		reg = <0xfd484000 0x1000>;
 		qcom,num-locks = <32>;
 	};
-
---LDREX Implementation--
-Required properties:
-- compatible : should be "qcom,ipc-spinlock-ldrex"
-- reg : the location and size of the shared lock memory
-
-Example:
-
-	qcom,ipc-spinlock@fa00000 {
-		compatible = "qcom,ipc-spinlock-ldrex";
-		reg = <0xfa00000 0x200000>;
-	};
