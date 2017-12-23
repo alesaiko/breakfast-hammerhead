@@ -2104,6 +2104,9 @@ int snd_soc_update_bits(struct snd_soc_codec *codec, unsigned short reg,
 	unsigned int old, new;
 	int ret;
 
+	if (codec->filter && codec->filter(codec, reg))
+		return -EINVAL;
+
 	if (codec->using_regmap) {
 		ret = regmap_update_bits_check(codec->control_data, reg,
 					       mask, value, &change);
@@ -3633,6 +3636,7 @@ int snd_soc_register_codec(struct device *dev,
 
 	codec->write = codec_drv->write;
 	codec->read = codec_drv->read;
+	codec->filter = codec_drv->filter;
 	codec->volatile_register = codec_drv->volatile_register;
 	codec->readable_register = codec_drv->readable_register;
 	codec->writable_register = codec_drv->writable_register;
