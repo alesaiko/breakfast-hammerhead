@@ -654,6 +654,7 @@ struct snd_soc_codec {
 	unsigned int (*hw_read)(struct snd_soc_codec *, unsigned int);
 	unsigned int (*read)(struct snd_soc_codec *, unsigned int);
 	int (*write)(struct snd_soc_codec *, unsigned int, unsigned int);
+	int (*filter)(struct snd_soc_codec *, unsigned int);
 	int (*bulk_write_raw)(struct snd_soc_codec *, unsigned int, const void *, size_t);
 	void *reg_cache;
 	const void *reg_def_copy;
@@ -698,6 +699,7 @@ struct snd_soc_codec_driver {
 	/* codec IO */
 	unsigned int (*read)(struct snd_soc_codec *, unsigned int);
 	int (*write)(struct snd_soc_codec *, unsigned int, unsigned int);
+	int (*filter)(struct snd_soc_codec *, unsigned int);
 	int (*display_register)(struct snd_soc_codec *, char *,
 				size_t, unsigned int);
 	int (*volatile_register)(struct snd_soc_codec *, unsigned int);
