@@ -134,7 +134,7 @@ void update_rq_clock(struct rq *rq)
 #define SCHED_FEAT(name, enabled)	\
 	(1UL << __SCHED_FEAT_##name) * enabled |
 
-const_debug unsigned int sysctl_sched_features =
+unsigned int __read_mostly sysctl_sched_features =
 #include "features.h"
 	0;
 
@@ -178,21 +178,6 @@ struct static_key sched_feat_keys[__SCHED_FEAT_NR] = {
 };
 
 #undef SCHED_FEAT
-
-static void sched_feat_disable(int i)
-{
-	if (static_key_enabled(&sched_feat_keys[i]))
-		static_key_slow_dec(&sched_feat_keys[i]);
-}
-
-static void sched_feat_enable(int i)
-{
-	if (!static_key_enabled(&sched_feat_keys[i]))
-		static_key_slow_inc(&sched_feat_keys[i]);
-}
-#else
-static void sched_feat_disable(int i) { };
-static void sched_feat_enable(int i) { };
 #endif /* HAVE_JUMP_LABEL */
 
 static ssize_t
@@ -221,10 +206,10 @@ sched_feat_write(struct file *filp, const char __user *ubuf,
 	for (i = 0; i < __SCHED_FEAT_NR; i++) {
 		if (strcmp(cmp, sched_feat_names[i]) == 0) {
 			if (neg) {
-				sysctl_sched_features &= ~(1UL << i);
+				sched_feat_rem(i);
 				sched_feat_disable(i);
 			} else {
-				sysctl_sched_features |= (1UL << i);
+				sched_feat_set(i);
 				sched_feat_enable(i);
 			}
 			break;
