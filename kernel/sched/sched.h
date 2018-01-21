@@ -616,7 +616,10 @@ static inline void __set_task_cpu(struct task_struct *p, unsigned int cpu)
 # define const_debug const
 #endif
 
-extern const_debug unsigned int sysctl_sched_features;
+extern unsigned int __read_mostly sysctl_sched_features;
+
+#define sched_feat_set(x) (sysctl_sched_features |= BIT(x))
+#define sched_feat_rem(x) (sysctl_sched_features &= ~BIT(x))
 
 #define SCHED_FEAT(name, enabled)	\
 	__SCHED_FEAT_##name ,
@@ -650,8 +653,23 @@ static __always_inline bool static_branch_##name(struct static_key *key) \
 #undef SCHED_FEAT
 
 extern struct static_key sched_feat_keys[__SCHED_FEAT_NR];
+
+static inline void sched_feat_disable(int i)
+{
+	if (static_key_enabled(&sched_feat_keys[i]))
+		static_key_slow_dec(&sched_feat_keys[i]);
+}
+
+static inline void sched_feat_enable(int i)
+{
+	if (!static_key_enabled(&sched_feat_keys[i]))
+		static_key_slow_inc(&sched_feat_keys[i]);
+}
+
 #define sched_feat(x) (static_branch_##x(&sched_feat_keys[__SCHED_FEAT_##x]))
 #else /* !(SCHED_DEBUG && HAVE_JUMP_LABEL) */
+static inline void sched_feat_disable(int i) { };
+static inline void sched_feat_enable(int i) { };
 #define sched_feat(x) (sysctl_sched_features & (1UL << __SCHED_FEAT_##x))
 #endif /* SCHED_DEBUG && HAVE_JUMP_LABEL */
 
