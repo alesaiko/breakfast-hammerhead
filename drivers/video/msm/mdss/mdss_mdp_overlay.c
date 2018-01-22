@@ -2161,13 +2161,13 @@ static void __vsync_retire_handle_vsync(struct mdss_mdp_ctl *ctl, ktime_t t)
 	}
 
 	mdp5_data = mfd_to_mdp5_data(mfd);
-	schedule_work(&mdp5_data->retire_work);
+	queue_kthread_work(&mdp5_data->worker, &mdp5_data->vsync_work);
 }
 
-static void __vsync_retire_work_handler(struct work_struct *work)
+static void __vsync_retire_work_handler(struct kthread_work *work)
 {
 	struct mdss_overlay_private *mdp5_data =
-		container_of(work, typeof(*mdp5_data), retire_work);
+		container_of(work, typeof(*mdp5_data), vsync_work);
 
 	if (!mdp5_data->ctl || !mdp5_data->ctl->mfd)
 		return;
@@ -2238,6 +2238,7 @@ __vsync_retire_get_fence(struct msm_sync_pt_data *sync_pt_data)
 static int __vsync_retire_setup(struct msm_fb_data_type *mfd)
 {
 	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(mfd);
+	struct sched_param param = { .sched_priority = 5 };
 	char name[24];
 
 	snprintf(name, sizeof(name), "mdss_fb%d_retire", mfd->index);
@@ -2248,10 +2249,21 @@ static int __vsync_retire_setup(struct msm_fb_data_type *mfd)
 	}
 	mfd->mdp_sync_pt_data.get_retire_fence = __vsync_retire_get_fence;
 
+	init_kthread_worker(&mdp5_data->worker);
+	init_kthread_work(&mdp5_data->vsync_work, __vsync_retire_work_handler);
+
+	mdp5_data->thread = kthread_run(kthread_worker_fn,
+				&mdp5_data->worker, "vsync_retire_work");
+	if (IS_ERR_OR_NULL(mdp5_data->thread)) {
+		pr_err("Unable to start vsync thread\n");
+		return -ENOMEM;
+	}
+
+	sched_setscheduler(mdp5_data->thread, SCHED_FIFO, &param);
+
 	mdp5_data->vsync_retire_handler.vsync_handler =
 		__vsync_retire_handle_vsync;
 	mdp5_data->vsync_retire_handler.cmd_post_flush = false;
-	INIT_WORK(&mdp5_data->retire_work, __vsync_retire_work_handler);
 
 	return 0;
 }
