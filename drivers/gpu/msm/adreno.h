@@ -122,7 +122,7 @@ enum coresight_debug_reg {
  * operation
  * @tail: pointer to the tail of the cmdqueue.  This is the most recently
  * submitted operation
- * @work: work_struct to put the dispatcher in a work queue
+ * @work: kthread_work to put the dispatcher in a kernel thread
  * @kobj: kobject for the dispatcher directory in the device sysfs node
  */
 struct adreno_dispatcher {
@@ -137,7 +137,7 @@ struct adreno_dispatcher {
 	struct kgsl_cmdbatch *cmdqueue[ADRENO_DISPATCH_CMDQUEUE_SIZE];
 	unsigned int head;
 	unsigned int tail;
-	struct work_struct work;
+	struct kthread_work work;
 	struct kobject kobj;
 };
 
