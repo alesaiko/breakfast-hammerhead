@@ -17,6 +17,7 @@
 #include <linux/notifier.h>
 #include <linux/export.h>
 
+static int lcd_suspend = -ENOENT;
 static BLOCKING_NOTIFIER_HEAD(lcd_notifier_list);
 
 /**
@@ -39,6 +40,12 @@ int lcd_unregister_client(struct notifier_block *nb)
 }
 EXPORT_SYMBOL(lcd_unregister_client);
 
+int lcd_panel_suspended(void)
+{
+	return lcd_suspend;
+}
+EXPORT_SYMBOL(lcd_panel_suspended);
+
 /**
  *	lcd_notifier_call_chain - notify clients on lcd_events
  *	@val: Value passed unmodified to notifier function
@@ -47,6 +54,7 @@ EXPORT_SYMBOL(lcd_unregister_client);
  */
 int lcd_notifier_call_chain(unsigned long val, void *v)
 {
+	lcd_suspend = val > LCD_EVENT_ON_END;
 	return blocking_notifier_call_chain(&lcd_notifier_list, val, v);
 }
 EXPORT_SYMBOL_GPL(lcd_notifier_call_chain);
