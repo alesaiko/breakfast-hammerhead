@@ -20,6 +20,7 @@ struct lcd_event {
 int lcd_register_client(struct notifier_block *nb);
 int lcd_unregister_client(struct notifier_block *nb);
 int lcd_notifier_call_chain(unsigned long val, void *v);
+int lcd_panel_suspended(void);
 #else
 static int inline lcd_register_client(struct notifier_block *nb)
 {
@@ -30,6 +31,10 @@ static int inline lcd_unregister_client(struct notifier_block *nb)
 	return -ENOENT;
 }
 static int inline lcd_notifier_call_chain(unsigned long val, void *v)
+{
+	return -ENOENT;
+}
+static int inline lcd_panel_suspended(void)
 {
 	return -ENOENT;
 }
