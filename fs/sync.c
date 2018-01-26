@@ -18,8 +18,8 @@
 #include <linux/module.h>
 #include "internal.h"
 
-static bool __read_mostly fsync_enabled = true;
-module_param(fsync_enabled, bool, 0644);
+bool __read_mostly fsync_enabled = true;
+module_param(fsync_enabled, bool, 0444);
 
 #define VALID_FLAGS (SYNC_FILE_RANGE_WAIT_BEFORE|SYNC_FILE_RANGE_WRITE| \
 			SYNC_FILE_RANGE_WAIT_AFTER)
