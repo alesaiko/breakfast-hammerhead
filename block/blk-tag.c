@@ -350,9 +350,10 @@ int blk_queue_start_tag(struct request_queue *q, struct request *rq)
 	 */
 	max_depth = bqt->max_depth;
 	if (!rq_is_sync(rq) && max_depth > 1) {
-		max_depth -= 2;
-		if (!max_depth)
-			max_depth = 1;
+		max_depth--;
+		/* Reserve one more tag if there are a few available */
+		if (max_depth > 3)
+			max_depth--;
 		if (q->in_flight[BLK_RW_ASYNC] > max_depth)
 			return 1;
 	}
