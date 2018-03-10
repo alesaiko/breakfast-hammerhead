@@ -476,11 +476,19 @@ static int kgsl_pwrctrl_gpuclk_show(struct device *dev,
 {
 	struct kgsl_device *device = kgsl_device_from_dev(dev);
 	struct kgsl_pwrctrl *pwr;
-	if (device == NULL)
+	unsigned int pwrlevel;
+
+	if (!device)
 		return 0;
+
 	pwr = &device->pwrctrl;
-	return snprintf(buf, PAGE_SIZE, "%d\n",
-			pwr->pwrlevels[pwr->active_pwrlevel].gpu_freq);
+
+	/* GPU frequency in slumber mode equals the last power level's one */
+	pwrlevel = device->state != KGSL_STATE_SLUMBER
+			? pwr->active_pwrlevel
+			: pwr->num_pwrlevels - 1;
+
+	return scnprintf(buf, 12, "%u\n", pwr->pwrlevels[pwrlevel].gpu_freq);
 }
 
 static int kgsl_pwrctrl_idle_timer_store(struct device *dev,
