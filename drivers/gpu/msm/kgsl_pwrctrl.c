@@ -476,11 +476,27 @@ static int kgsl_pwrctrl_gpuclk_show(struct device *dev,
 {
 	struct kgsl_device *device = kgsl_device_from_dev(dev);
 	struct kgsl_pwrctrl *pwr;
-	if (device == NULL)
-		return 0;
+	unsigned int pwrlevel;
+
+	if (IS_ERR_OR_NULL(device))
+		return scnprintf(buf, 15, "<unsupported>\n");
+
 	pwr = &device->pwrctrl;
-	return snprintf(buf, PAGE_SIZE, "%d\n",
-			pwr->pwrlevels[pwr->active_pwrlevel].gpu_freq);
+
+	/*
+	 * It is not correct to show active power level when GPU is in slumber
+	 * mode, as an actual frequency is the last available power level
+	 * (slumber/sleep level). Active power level is being set to initial
+	 * value when the device is put to sleep for a better power after
+	 * wake-up.  Because of this we should check the current state of
+	 * GPU device to get a real gpuclk.
+	 */
+	if (device->state != KGSL_STATE_SLUMBER)
+		pwrlevel = pwr->active_pwrlevel;
+	else
+		pwrlevel = pwr->num_pwrlevels - 1;
+
+	return scnprintf(buf, 12, "%u\n", pwr->pwrlevels[pwrlevel].gpu_freq);
 }
 
 static int kgsl_pwrctrl_idle_timer_store(struct device *dev,
