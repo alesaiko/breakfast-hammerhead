@@ -1410,64 +1410,74 @@ int kgsl_pwrctrl_sleep(struct kgsl_device *device)
 }
 EXPORT_SYMBOL(kgsl_pwrctrl_sleep);
 
-/******************************************************************/
-/* Caller must hold the device mutex. */
-int kgsl_pwrctrl_wake(struct kgsl_device *device)
+/**
+ * kgsl_pwrctrl_wake() - power up the GPU from slumber/sleep state.
+ * @device: pointer to the kgsl_device struct.
+ * @priority: flag to specify high-priority start.
+ *
+ * Resume the GPU from a lower power state to ACTIVE.
+ * ! The caller to this function must handle the kgsl_device mutex.
+ */
+int kgsl_pwrctrl_wake(struct kgsl_device *device, int priority)
 {
-	int status = 0;
-	unsigned int context_id;
-	unsigned int state = device->state;
-	unsigned int ts_processed = 0xdeaddead;
+	unsigned int context_id, ts_processed, state = device->state;
 	struct kgsl_context *context;
+	int ret = 0;
 
 	kgsl_pwrctrl_request_state(device, KGSL_STATE_ACTIVE);
+
 	switch (device->state) {
 	case KGSL_STATE_SLUMBER:
-		status = device->ftbl->start(device);
-		if (status) {
+		ret = device->ftbl->start(device, priority);
+		if (IS_ERR_VALUE(ret)) {
 			kgsl_pwrctrl_request_state(device, KGSL_STATE_NONE);
-			KGSL_DRV_ERR(device, "start failed %d\n", status);
+			KGSL_DRV_ERR(device, "Unable to start (%d)\n", ret);
 			break;
 		}
-		/* fall through */
+		/* Fall through */
 	case KGSL_STATE_SLEEP:
 		kgsl_pwrctrl_axi(device, KGSL_PWRFLAGS_ON);
 		kgsl_pwrscale_wake(device);
-		kgsl_sharedmem_readl(&device->memstore,
-			(unsigned int *) &context_id,
-			KGSL_MEMSTORE_OFFSET(KGSL_MEMSTORE_GLOBAL,
-				current_context));
-		context = kgsl_context_get(device, context_id);
-		if (context)
-			ts_processed = kgsl_readtimestamp(device, context,
-				KGSL_TIMESTAMP_RETIRED);
-		KGSL_PWR_INFO(device, "Wake from %s state. CTXT: %d RTRD TS: %08X\n",
-			kgsl_pwrstate_to_str(state),
-			context ? context->id : -1, ts_processed);
-		kgsl_context_put(context);
 
-		/* fall through */
+		kgsl_sharedmem_readl(&device->memstore, (u32 *)&context_id,
+				     KGSL_MEMSTORE_OFFSET(KGSL_MEMSTORE_GLOBAL,
+							  current_context));
+
+		context = kgsl_context_get(device, context_id);
+		ts_processed = context ? kgsl_readtimestamp(device, context,
+					 KGSL_TIMESTAMP_RETIRED) : 0xdeaddead;
+
+		KGSL_PWR_INFO(device, "Wake from %s state. CTXT: %d RTRD TS: %08X\n",
+			      kgsl_pwrstate_to_str(state),
+			      context ? context->id : -1, ts_processed);
+		kgsl_context_put(context);
+		/* Fall through */
 	case KGSL_STATE_NAP:
 		/* Turn on the core clocks */
 		kgsl_pwrctrl_clk(device, KGSL_PWRFLAGS_ON, KGSL_STATE_ACTIVE);
-		/* Enable state before turning on irq */
+
+		/* Enable state before turning on IRQ */
 		kgsl_pwrctrl_set_state(device, KGSL_STATE_ACTIVE);
 		kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_ON);
+
 		mod_timer(&device->idle_timer, jiffies +
-				device->pwrctrl.interval_timeout);
+			   device->pwrctrl.interval_timeout);
+
 		pm_qos_update_request(&device->pwrctrl.pm_qos_req_dma,
-				device->pwrctrl.pm_qos_latency);
+				       device->pwrctrl.pm_qos_latency);
+		/* Fall through */
 	case KGSL_STATE_ACTIVE:
 		kgsl_pwrctrl_request_state(device, KGSL_STATE_NONE);
 		break;
 	default:
-		KGSL_PWR_WARN(device, "unhandled state %s\n",
-				kgsl_pwrstate_to_str(device->state));
+		KGSL_PWR_WARN(device, "Unhandled state %s\n",
+			      kgsl_pwrstate_to_str(device->state));
 		kgsl_pwrctrl_request_state(device, KGSL_STATE_NONE);
-		status = -EINVAL;
+		ret = -EINVAL;
 		break;
 	}
-	return status;
+
+	return ret;
 }
 EXPORT_SYMBOL(kgsl_pwrctrl_wake);
 
@@ -1558,7 +1568,7 @@ int kgsl_active_count_get(struct kgsl_device *device)
 		wait_for_completion(&device->hwaccess_gate);
 		mutex_lock(&device->mutex);
 
-		ret = kgsl_pwrctrl_wake(device);
+		ret = kgsl_pwrctrl_wake(device, 1);
 	}
 	if (ret == 0)
 		atomic_inc(&device->active_cnt);
