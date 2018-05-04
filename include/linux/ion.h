@@ -316,6 +316,9 @@ static inline int ion_handle_get_flags(struct ion_client *client,
 }
 
 #endif /* CONFIG_ION */
+#else /* __KERNEL__ */
+/* Qualcomm Hardware Abstraction Layers expect a new type to be used */
+typedef struct ion_handle *ion_user_handle_t;
 #endif /* __KERNEL__ */
 
 /**
@@ -340,7 +343,11 @@ static inline int ion_handle_get_flags(struct ion_client *client,
 struct ion_allocation_data {
 	size_t len;
 	size_t align;
+#ifdef __KERNEL__
 	unsigned int heap_mask;
+#else
+	unsigned int heap_id_mask;
+#endif
 	unsigned int flags;
 	struct ion_handle *handle;
 };
