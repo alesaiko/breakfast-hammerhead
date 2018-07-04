@@ -642,8 +642,7 @@ void cond_compute_av(struct avtab *ctab, struct avtab_key *key,
 {
 	struct avtab_node *node;
 
-	if (IS_ERR_OR_NULL(ctab) || IS_ERR_OR_NULL(key) ||
-	    IS_ERR_OR_NULL(avd)  || IS_ERR_OR_NULL(xperms))
+	if (IS_ERR_OR_NULL(ctab) || IS_ERR_OR_NULL(key) || IS_ERR_OR_NULL(avd))
 		return;
 
 #define is_specified(nkey)					\
@@ -664,7 +663,7 @@ void cond_compute_av(struct avtab *ctab, struct avtab_key *key,
 			avd->auditdeny &= node->datum.u.data;
 		if (is_specified(AVTAB_AUDITALLOW))
 			avd->auditallow |= node->datum.u.data;
-		if (is_specified(AVTAB_XPERMS))
+		if (xperms && is_specified(AVTAB_XPERMS))
 			services_compute_xperms_drivers(xperms, node);
 	}
 }
