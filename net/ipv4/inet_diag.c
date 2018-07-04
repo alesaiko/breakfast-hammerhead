@@ -263,6 +263,47 @@ static int sk_diag_fill(struct sock *sk, struct sk_buff *skb,
 	return inet_csk_diag_fill(sk, skb, r, pid, seq, nlmsg_flags, unlh);
 }
 
+struct sock *inet_diag_find_one_icsk(struct inet_hashinfo *hashinfo,
+				     struct inet_diag_req_v2 *req)
+{
+	struct inet_diag_sockid *id = &req->id;
+	struct sock *sk;
+
+	switch (req->sdiag_family) {
+	case AF_INET:
+		sk = inet_lookup(&init_net, hashinfo, id->idiag_dst[0],
+				 id->idiag_dport, id->idiag_src[0],
+				 id->idiag_sport, id->idiag_if);
+		break;
+#if IS_ENABLED(CONFIG_IPV6)
+	case AF_INET6:
+		sk = inet6_lookup(&init_net, hashinfo,
+				  (struct in6_addr *)id->idiag_dst,
+				  id->idiag_dport,
+				  (struct in6_addr *)id->idiag_src,
+				  id->idiag_sport, id->idiag_if);
+		break;
+#endif
+	default:
+		return ERR_PTR(-EINVAL);
+	}
+
+	if (IS_ERR_OR_NULL(sk))
+		return ERR_PTR(-ENOENT);
+
+	if (sock_diag_check_cookie(sk, id->idiag_cookie)) {
+		/* NOTE: Forward-ports should use sock_gen_put(sk) instead. */
+		sk->sk_state == TCP_TIME_WAIT ?
+			inet_twsk_put((struct inet_timewait_sock *)sk) :
+			sock_put(sk);
+
+		return ERR_PTR(-ENOENT);
+	}
+
+	return sk;
+}
+EXPORT_SYMBOL_GPL(inet_diag_find_one_icsk);
+
 int inet_diag_dump_one_icsk(struct inet_hashinfo *hashinfo, struct sk_buff *in_skb,
 		const struct nlmsghdr *nlh, struct inet_diag_req_v2 *req)
 {
@@ -270,33 +311,9 @@ int inet_diag_dump_one_icsk(struct inet_hashinfo *hashinfo, struct sk_buff *in_s
 	struct sock *sk;
 	struct sk_buff *rep;
 
-	err = -EINVAL;
-	if (req->sdiag_family == AF_INET) {
-		sk = inet_lookup(&init_net, hashinfo, req->id.idiag_dst[0],
-				 req->id.idiag_dport, req->id.idiag_src[0],
-				 req->id.idiag_sport, req->id.idiag_if);
-	}
-#if IS_ENABLED(CONFIG_IPV6)
-	else if (req->sdiag_family == AF_INET6) {
-		sk = inet6_lookup(&init_net, hashinfo,
-				  (struct in6_addr *)req->id.idiag_dst,
-				  req->id.idiag_dport,
-				  (struct in6_addr *)req->id.idiag_src,
-				  req->id.idiag_sport,
-				  req->id.idiag_if);
-	}
-#endif
-	else {
-		goto out_nosk;
-	}
-
-	err = -ENOENT;
-	if (sk == NULL)
-		goto out_nosk;
-
-	err = sock_diag_check_cookie(sk, req->id.idiag_cookie);
-	if (err)
-		goto out;
+	sk = inet_diag_find_one_icsk(hashinfo, req);
+	if (IS_ERR_OR_NULL(sk))
+		return PTR_ERR(sk);
 
 	err = -ENOMEM;
 	rep = alloc_skb(NLMSG_SPACE((sizeof(struct inet_diag_msg) +
@@ -326,7 +343,7 @@ out:
 		else
 			sock_put(sk);
 	}
-out_nosk:
+
 	return err;
 }
 EXPORT_SYMBOL_GPL(inet_diag_dump_one_icsk);
