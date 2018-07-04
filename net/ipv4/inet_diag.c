@@ -277,11 +277,17 @@ struct sock *inet_diag_find_one_icsk(struct inet_hashinfo *hashinfo,
 		break;
 #if IS_ENABLED(CONFIG_IPV6)
 	case AF_INET6:
-		sk = inet6_lookup(&init_net, hashinfo,
-				  (struct in6_addr *)id->idiag_dst,
-				  id->idiag_dport,
-				  (struct in6_addr *)id->idiag_src,
-				  id->idiag_sport, id->idiag_if);
+		if (ipv6_addr_v4mapped((struct in6_addr *)id->idiag_dst) &&
+		    ipv6_addr_v4mapped((struct in6_addr *)id->idiag_src))
+			sk = inet_lookup(&init_net, hashinfo, id->idiag_dst[3],
+					 id->idiag_dport, id->idiag_src[3],
+					 id->idiag_sport, id->idiag_if);
+		else
+			sk = inet6_lookup(&init_net, hashinfo,
+					  (struct in6_addr *)id->idiag_dst,
+					  id->idiag_dport,
+					  (struct in6_addr *)id->idiag_src,
+					  id->idiag_sport, id->idiag_if);
 		break;
 #endif
 	default:
