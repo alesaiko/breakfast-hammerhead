@@ -336,6 +336,33 @@ void avtab_hash_eval(struct avtab *h, char *tag)
 	       chain2_len_sum);
 }
 
+/*
+ * Extended permissions compatibility.
+ * Make ToT Android kernels compatible with Android M releases.
+ */
+#define AVTAB_XPERMS_OPTYPE	(4)
+#define AVTAB_OPTYPE_ALLOWED	BIT(12)
+#define AVTAB_OPTYPE_AUDITALLOW	BIT(13)
+#define AVTAB_OPTYPE_DONTAUDIT	BIT(14)
+#define AVTAB_OPTYPE		(AVTAB_OPTYPE_ALLOWED |		\
+				 AVTAB_OPTYPE_AUDITALLOW |	\
+				 AVTAB_OPTYPE_DONTAUDIT)
+
+#define avtab_xperms_to_optype(x) ((x) << AVTAB_XPERMS_OPTYPE)
+#define avtab_optype_to_xperms(x) ((x) >> AVTAB_XPERMS_OPTYPE)
+
+static bool __read_mostly avtab_android_m_compat;
+
+static inline void avtab_android_m_compat_set(void)
+{
+	/* Return early if compatibility mode is already enabled */
+	if (avtab_android_m_compat)
+		return;
+
+	avtab_android_m_compat = true;
+	pr_info("SELinux: avtab: Android M compatibility mode!\n");
+}
+
 static uint16_t spec_order[] = {
 	AVTAB_ALLOWED,
 	AVTAB_AUDITDENY,
@@ -360,6 +387,7 @@ int avtab_read_item(struct avtab *a, void *fp, struct policydb *pol,
 	struct avtab_datum datum;
 	struct avtab_extended_perms xperms;
 	__le32 buf32[ARRAY_SIZE(xperms.perms.p)];
+	bool android_m_compat_optype = false;
 	int i, rc;
 	unsigned set;
 
@@ -451,6 +479,13 @@ int avtab_read_item(struct avtab *a, void *fp, struct policydb *pol,
 	key.target_class = le16_to_cpu(buf16[items++]);
 	key.specified = le16_to_cpu(buf16[items++]);
 
+	if (vers == POLICYDB_VERSION_XPERMS_IOCTL &&
+	   (key.specified & AVTAB_OPTYPE)) {
+		key.specified = avtab_optype_to_xperms(key.specified);
+		android_m_compat_optype = true;
+		avtab_android_m_compat_set();
+	}
+
 	if (!policydb_type_isvalid(pol, key.source_type) ||
 	    !policydb_type_isvalid(pol, key.target_type) ||
 	    !policydb_class_isvalid(pol, key.target_class)) {
@@ -481,10 +516,21 @@ int avtab_read_item(struct avtab *a, void *fp, struct policydb *pol,
 			return rc;
 		}
 
-		rc = next_entry(&xperms.driver, fp, sizeof(u8));
-		if (IS_ERR_VALUE(rc)) {
-			pr_err("SELinux: avtab: Truncated entry\n");
-			return rc;
+		if (avtab_android_m_compat ||
+		   (vers == POLICYDB_VERSION_XPERMS_IOCTL &&
+		    xperms.specified != AVTAB_XPERMS_IOCTLFUNCTION &&
+		    xperms.specified != AVTAB_XPERMS_IOCTLDRIVER)) {
+			xperms.driver = xperms.specified;
+			xperms.specified = (android_m_compat_optype ?
+						AVTAB_XPERMS_IOCTLDRIVER :
+						AVTAB_XPERMS_IOCTLFUNCTION);
+			avtab_android_m_compat_set();
+		} else {
+			rc = next_entry(&xperms.driver, fp, sizeof(u8));
+			if (IS_ERR_VALUE(rc)) {
+				pr_err("SELinux: avtab: Truncated entry\n");
+				return rc;
+			}
 		}
 
 		rc = next_entry(buf32, fp,
@@ -566,6 +612,13 @@ bad:
 	goto out;
 }
 
+static inline bool avtab_compat_mode_required(struct avtab_node *cur)
+{
+	return avtab_android_m_compat &&
+	      (cur->key.specified & AVTAB_XPERMS) &&
+	      (cur->datum.u.xperms->specified == AVTAB_XPERMS_IOCTLDRIVER);
+}
+
 int avtab_write_item(struct policydb *p, struct avtab_node *cur, void *fp)
 {
 	__le16 buf16[4];
@@ -575,15 +628,19 @@ int avtab_write_item(struct policydb *p, struct avtab_node *cur, void *fp)
 	buf16[0] = cpu_to_le16(cur->key.source_type);
 	buf16[1] = cpu_to_le16(cur->key.target_type);
 	buf16[2] = cpu_to_le16(cur->key.target_class);
-	buf16[3] = cpu_to_le16(cur->key.specified);
+	buf16[3] = cpu_to_le16(avtab_compat_mode_required(cur) ?
+			avtab_xperms_to_optype(cur->key.specified) :
+			cur->key.specified);
 	rc = put_entry(buf16, sizeof(u16), 4, fp);
 	if (rc)
 		return rc;
 
 	if (cur->key.specified & AVTAB_XPERMS) {
-		rc = put_entry(&cur->datum.u.xperms->specified, sizeof(u8), 1, fp);
-		if (IS_ERR_VALUE(rc))
-			return rc;
+		if (!avtab_android_m_compat) {
+			rc = put_entry(&cur->datum.u.xperms->specified, sizeof(u8), 1, fp);
+			if (IS_ERR_VALUE(rc))
+				return rc;
+		}
 
 		rc = put_entry(&cur->datum.u.xperms->driver, sizeof(u8), 1, fp);
 		if (IS_ERR_VALUE(rc))
