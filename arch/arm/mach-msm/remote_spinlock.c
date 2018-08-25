@@ -292,11 +292,15 @@ remote_spinlock_init_address(int id, _remote_spinlock_t *lock)
 
 static __always_inline bool is_enabled(struct device_node *node)
 {
+	bool ret = false;
+
 	/* Return early if Device Tree node is invalid */
 	if (IS_ERR_OR_NULL(node))
 		return false;
-
-	return of_property_match_string(node, "status", "disabled") < 0;
+#ifdef CONFIG_OF
+	ret = of_property_match_string(node, "status", "disabled") < 0;
+#endif
+	return ret;
 }
 
 static inline void initialize_ops(void)
